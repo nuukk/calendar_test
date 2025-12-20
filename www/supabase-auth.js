@@ -94,13 +94,13 @@
   //    - major   -> sb_rt_major
   //    - delivable -> sb_rt_delivable
   // -------------------------------------------------
-  const SCHEMA = cfg.schema && String(cfg.schema) ? String(cfg.schema) : "public";
-  const tables = cfg.tables && typeof cfg.tables === "object" ? cfg.tables : {};
+  const SCHEMA = (cfg.schema && String(cfg.schema)) ? String(cfg.schema) : "public";
+  const tables =
+    cfg.tables && typeof cfg.tables === "object" ? cfg.tables : {};
 
-  // 채널 상태 + 재시도(중복 구독 방지/재구독)
+  // 채널 상태(중복 구독 방지)
   const rtState = {
     channels: {}, // { events: ch, major: ch, delivable: ch }
-    retry: {}, // { events: n, major: n, delivable: n }
   };
 
   const rtStatus = (obj) => {
@@ -108,44 +108,45 @@
   };
 
   const setRealtimeAuth = (session) => {
+    // Supabase-js v2에서 realtime 토큰을 명시적으로 업데이트(있으면) 해줌
     const token = session?.access_token || cfg.anonKey || "";
     try {
       if (sb.realtime && typeof sb.realtime.setAuth === "function") {
         sb.realtime.setAuth(token);
       }
     } catch (e) {
+      // setAuth가 없거나 실패해도 채널 구독 자체는 시도 (버전에 따라 자동 처리되기도 함)
       console.warn("[sb] realtime.setAuth failed/unsupported:", e);
     }
   };
 
-  const RETRY_BASE_MS = 800;
-  const RETRY_MAX_MS = 30000;
-  const backoffMs = (n) =>
-    Math.min(RETRY_MAX_MS, RETRY_BASE_MS * Math.pow(2, Math.max(0, n - 1)));
-
-  const removeCh = (ch) => {
-    if (!ch) return;
-    try {
-      if (typeof sb.removeChannel === "function") sb.removeChannel(ch);
-    } catch (e) {}
-    try {
-      if (typeof ch.unsubscribe === "function") ch.unsubscribe();
-    } catch (e) {}
-  };
-
   const stopRealtime = () => {
     const chans = rtState.channels || {};
-    Object.keys(chans).forEach((k) => removeCh(chans[k]));
+    const keys = Object.keys(chans);
+
+    if (keys.length === 0) return;
+
+    keys.forEach((k) => {
+      const ch = chans[k];
+      if (!ch) return;
+
+      // supabase-js 권장: removeChannel()
+      try {
+        if (typeof sb.removeChannel === "function") sb.removeChannel(ch);
+      } catch (e) {}
+
+      // fallback: channel.unsubscribe()
+      try {
+        if (typeof ch.unsubscribe === "function") ch.unsubscribe();
+      } catch (e) {}
+    });
+
     rtState.channels = {};
-    rtState.retry = {};
     rtStatus({ status: "STOPPED" });
   };
 
   const subscribeTable = (kind, tableName, shinyInputName) => {
     if (!tableName || !shinyInputName) return;
-
-    // 이미 살아있는 채널이 있으면 재생성하지 않음
-    if (rtState.channels[kind]) return;
 
     const channelName = `rt:${SCHEMA}:${tableName}:${kind}`;
     const ch = sb.channel(channelName);
@@ -154,34 +155,13 @@
       "postgres_changes",
       { event: "*", schema: SCHEMA, table: tableName },
       (payload) => {
+        // R쪽(global.R)은 input_value$payload 또는 input_value를 payload로 처리
         sendToShiny(shinyInputName, { payload, ts: Date.now() });
       }
     );
 
     ch.subscribe((status) => {
       rtStatus({ kind, table: tableName, status });
-
-      if (status === "SUBSCRIBED") {
-        rtState.retry[kind] = 0;
-        return;
-      }
-
-      if (status === "TIMED_OUT" || status === "CHANNEL_ERROR" || status === "CLOSED") {
-        // 실패/종료 → 해당 채널 제거 후 백오프로 재시도
-        removeCh(ch);
-        if (rtState.channels[kind] === ch) delete rtState.channels[kind];
-
-        const n = (rtState.retry[kind] || 0) + 1;
-        rtState.retry[kind] = n;
-        const wait = backoffMs(n);
-
-        rtStatus({ kind, table: tableName, status: "RETRYING", retry: n, wait });
-
-        setTimeout(() => {
-          const sess = window.__sb_last_session || null;
-          if (sess) ensureRealtime(sess);
-        }, wait);
-      }
     });
 
     rtState.channels[kind] = ch;
@@ -193,11 +173,14 @@
       return;
     }
 
+    // 토큰 갱신/로그인 때 realtime auth 업데이트
     setRealtimeAuth(session);
 
-    // ✅ 중요: "채널이 하나라도 있으면 return" 하지 말고,
-    //         누락된 채널이 있으면 다시 붙인다.
-    rtStatus({ status: "ENSURE", schema: SCHEMA });
+    // 이미 구독 중이면 중복 생성하지 않음
+    if (rtState.channels && Object.keys(rtState.channels).length > 0) return;
+
+    // 구독 시작
+    rtStatus({ status: "STARTING", schema: SCHEMA });
 
     subscribeTable("events", tables.events, "sb_rt_events");
     subscribeTable("major", tables.major, "sb_rt_major");
@@ -240,6 +223,7 @@
   sb.auth.onAuthStateChange((event, session) => {
     pushSessionToShiny(session);
 
+    // 로그인/토큰갱신/초기세션 등에서 realtime 보장
     if (session) {
       ensureRealtime(session);
     } else {
