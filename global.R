@@ -16,53 +16,104 @@ library(jsonlite)
 # -------------------------------------------------
 # 1) 사용자
 # -------------------------------------------------
-parse_env_json <- function(x) {
-  x <- x %||% ""
-  if (!nzchar(x)) return(list())
-  tryCatch(jsonlite::fromJSON(x, simplifyVector = FALSE), error = function(e) list())
+CONFIG_ERRORS <- character(0)
+
+add_config_error <- function(msg) {
+  CONFIG_ERRORS <<- unique(c(CONFIG_ERRORS, msg))
+  message("[CONFIG] ", msg)
 }
 
-USER_COLORS <- unlist(parse_env_json(Sys.getenv("USER_COLORS")), use.names = TRUE)
-USER_NAMES  <- unlist(parse_env_json(Sys.getenv("USER_NAMES")),  use.names = TRUE)
+normalize_email <- function(x) {
+  x <- x %||% ""
+  x <- as.character(x)
+  trimws(tolower(x))
+}
 
-if (is.null(USER_COLORS)) USER_COLORS <- character(0)
-if (is.null(USER_NAMES))  USER_NAMES  <- character(0)
+parse_env_json <- function(x, var_name = "ENV") {
+  x <- x %||% ""
+  x <- trimws(x)
+  if (!nzchar(x)) return(list())
+  
+  # ✅ JSON 문법 자체가 틀리면(사용자 추가하면서 쉼표/따옴표 실수) 바로 잡아냄
+  if (!jsonlite::validate(x)) {
+    add_config_error(sprintf("%s 값이 유효한 JSON이 아닙니다(끝의 쉼표/따옴표/바깥따옴표 확인).", var_name))
+    return(list())
+  }
+  
+  tryCatch(
+    jsonlite::fromJSON(x, simplifyVector = FALSE),
+    error = function(e) {
+      add_config_error(sprintf("%s JSON 파싱 실패: %s", var_name, e$message))
+      list()
+    }
+  )
+}
 
-# 기존 코드는 USER_COLORS names만 허용 이메일로 썼는데,
-# 색/이름 둘 중 하나만 설정한 경우도 고려해서 union 처리
-ALLOWED_EMAILS <- unique(c(names(USER_COLORS), names(USER_NAMES)))
+parse_env_kv <- function(var_name) {
+  raw <- Sys.getenv(var_name, unset = "")
+  obj <- parse_env_json(raw, var_name)
+  
+  vec <- unlist(obj, use.names = TRUE)
+  if (is.null(vec) || length(vec) == 0) return(character(0))
+  vec <- as.character(vec)
+  
+  nm <- names(vec)
+  if (is.null(nm) || length(nm) == 0) {
+    add_config_error(sprintf("%s 는 JSON object 형태여야 합니다. 예: {\"a@b.com\":\"...\"}", var_name))
+    return(character(0))
+  }
+  
+  nm <- normalize_email(nm)
+  
+  # email 키만 남기기(잘못된 구조로 넣었을 때 방어)
+  ok <- nzchar(nm) & !is.na(nm) & grepl("@", nm, fixed = TRUE)
+  vec <- vec[ok]
+  nm <- nm[ok]
+  
+  # 중복 키는 마지막 값으로 덮어쓰기
+  if (anyDuplicated(nm)) {
+    keep <- !duplicated(nm, fromLast = TRUE)
+    vec <- vec[keep]
+    nm <- nm[keep]
+  }
+  
+  names(vec) <- nm
+  vec
+}
+
+USER_COLORS <- parse_env_kv("USER_COLORS")
+USER_NAMES  <- parse_env_kv("USER_NAMES")
+
+ALLOWED_EMAILS <- sort(unique(c(names(USER_COLORS), names(USER_NAMES))))
 
 user_name <- function(email) {
-  nm <- USER_NAMES[email]
-  if (is.null(nm) || is.na(nm) || !nzchar(nm)) email else unname(nm)
+  em <- normalize_email(email)
+  nm <- USER_NAMES[em]
+  if (length(nm) == 0 || is.na(nm) || !nzchar(nm)) em else unname(nm)
 }
 
 user_color <- function(email) {
-  col <- USER_COLORS[email]
-  if (is.null(col) || is.na(col) || !nzchar(col)) "#7f7f7f" else unname(col)
+  em <- normalize_email(email)
+  col <- USER_COLORS[em]
+  if (length(col) == 0 || is.na(col) || !nzchar(col)) "#7f7f7f" else unname(col)
 }
 
-build_calendar_props <- function() {
-  if (length(USER_COLORS) == 0) {
-    data.frame(
-      id = "default",
-      name = "기본",
-      color = "#FFFFFF",
-      backgroundColor = "#1f77b4",
-      borderColor = "#1f77b4",
-      stringsAsFactors = FALSE
-    )
-  } else {
-    ids <- names(USER_COLORS)
-    data.frame(
-      id = ids,
-      name = vapply(ids, user_name, character(1)),
-      color = "#FFFFFF",
-      backgroundColor = unname(USER_COLORS),
-      borderColor = unname(USER_COLORS),
-      stringsAsFactors = FALSE
-    )
-  }
+# ✅ 핵심: USER_COLORS가 비어도(또는 일부만 있어도) 캘린더 ID를 안정적으로 생성
+build_calendar_props <- function(extra_ids = character(0)) {
+  ids <- unique(c(names(USER_COLORS), names(USER_NAMES), normalize_email(extra_ids)))
+  ids <- ids[nzchar(ids) & !is.na(ids)]
+  if (length(ids) == 0) ids <- "default"
+  
+  cols <- vapply(ids, user_color, character(1))
+  
+  data.frame(
+    id = ids,
+    name = vapply(ids, user_name, character(1)),
+    color = "#FFFFFF",
+    backgroundColor = cols,
+    borderColor = cols,
+    stringsAsFactors = FALSE
+  )
 }
 
 # -------------------------------------------------
