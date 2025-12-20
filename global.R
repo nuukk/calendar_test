@@ -154,7 +154,7 @@ empty_major <- function() {
   )
 }
 
-empty_delivable <- function() {
+empty_deliverable <- function() {
   data.frame(
     id = integer(0),
     isoweek = integer(0),
@@ -173,7 +173,7 @@ SUPABASE_ANON_KEY <- Sys.getenv("SUPABASE_ANON_KEY")
 
 SUPABASE_EVENTS_TABLE <- Sys.getenv("SUPABASE_EVENTS_TABLE", unset = "events")
 SUPABASE_MAJOR_TABLE <- Sys.getenv("SUPABASE_MAJOR_TABLE", unset = "major_schedules")
-SUPABASE_DELIVABLE_TABLE <- Sys.getenv("SUPABASE_DELIVABLE_TABLE", unset = "delivable_items")
+SUPABASE_deliverable_TABLE <- Sys.getenv("SUPABASE_deliverable_TABLE", unset = "deliverable_items")
 
 validate_supabase_config <- function() {
   if (!nzchar(SUPABASE_URL) || !nzchar(SUPABASE_ANON_KEY)) {
@@ -245,8 +245,8 @@ normalize_major_df <- function(df) {
   df
 }
 
-normalize_delivable_df <- function(df) {
-  if (is.null(df) || nrow(df) == 0) return(empty_delivable())
+normalize_deliverable_df <- function(df) {
+  if (is.null(df) || nrow(df) == 0) return(empty_deliverable())
   if ("deadline" %in% names(df)) df$deadline <- as.Date(df$deadline)
   df
 }
@@ -287,20 +287,20 @@ fetch_major <- function(jwt = NULL) {
   })
 }
 
-fetch_delivable <- function(jwt = NULL) {
+fetch_deliverable <- function(jwt = NULL) {
   tryCatch({
-    resp <- supabase_request(SUPABASE_DELIVABLE_TABLE, jwt) %>%
+    resp <- supabase_request(SUPABASE_deliverable_TABLE, jwt) %>%
       req_url_query(select = "*", order = "id.asc") %>%
       req_perform()
     data <- resp_body_json(resp, simplifyVector = TRUE)
-    if (length(data) == 0) return(empty_delivable())
-    df <- normalize_delivable_df(as.data.frame(data, stringsAsFactors = FALSE))
+    if (length(data) == 0) return(empty_deliverable())
+    df <- normalize_deliverable_df(as.data.frame(data, stringsAsFactors = FALSE))
     df$id <- suppressWarnings(as.integer(df$id))
     df$isoweek <- suppressWarnings(as.integer(df$isoweek))
     df
   }, error = function(e) {
-    message("Delivable 데이터를 불러오는 중 오류 발생: ", e$message)
-    empty_delivable()
+    message("deliverable 데이터를 불러오는 중 오류 발생: ", e$message)
+    empty_deliverable()
   })
 }
 
@@ -402,52 +402,52 @@ delete_major_supabase <- function(id, jwt = NULL) {
   })
 }
 
-insert_delivable_supabase <- function(row, jwt = NULL) {
+insert_deliverable_supabase <- function(row, jwt = NULL) {
   tryCatch({
-    resp <- supabase_request(SUPABASE_DELIVABLE_TABLE, jwt) %>%
+    resp <- supabase_request(SUPABASE_deliverable_TABLE, jwt) %>%
       req_method("POST") %>%
       req_headers(Prefer = "return=representation") %>%
       req_body_json(list(row), auto_unbox = TRUE) %>%
       req_perform()
     data <- resp_body_json(resp, simplifyVector = TRUE)
-    df <- normalize_delivable_df(as.data.frame(data, stringsAsFactors = FALSE))
+    df <- normalize_deliverable_df(as.data.frame(data, stringsAsFactors = FALSE))
     df$id <- suppressWarnings(as.integer(df$id))
     df$isoweek <- suppressWarnings(as.integer(df$isoweek))
     df
   }, error = function(e) {
-    message("Delivable 저장 중 오류 발생: ", e$message)
-    empty_delivable()
+    message("deliverable 저장 중 오류 발생: ", e$message)
+    empty_deliverable()
   })
 }
 
-update_delivable_supabase <- function(id, updates, jwt = NULL) {
+update_deliverable_supabase <- function(id, updates, jwt = NULL) {
   tryCatch({
-    resp <- supabase_request(SUPABASE_DELIVABLE_TABLE, jwt) %>%
+    resp <- supabase_request(SUPABASE_deliverable_TABLE, jwt) %>%
       req_method("PATCH") %>%
       req_url_query(id = paste0("eq.", id)) %>%
       req_headers(Prefer = "return=representation") %>%
       req_body_json(updates, auto_unbox = TRUE) %>%
       req_perform()
     data <- resp_body_json(resp, simplifyVector = TRUE)
-    df <- normalize_delivable_df(as.data.frame(data, stringsAsFactors = FALSE))
+    df <- normalize_deliverable_df(as.data.frame(data, stringsAsFactors = FALSE))
     df$id <- suppressWarnings(as.integer(df$id))
     df$isoweek <- suppressWarnings(as.integer(df$isoweek))
     df
   }, error = function(e) {
-    message("Delivable 수정 중 오류 발생: ", e$message)
-    empty_delivable()
+    message("deliverable 수정 중 오류 발생: ", e$message)
+    empty_deliverable()
   })
 }
 
-delete_delivable_supabase <- function(id, jwt = NULL) {
+delete_deliverable_supabase <- function(id, jwt = NULL) {
   tryCatch({
-    supabase_request(SUPABASE_DELIVABLE_TABLE, jwt) %>%
+    supabase_request(SUPABASE_deliverable_TABLE, jwt) %>%
       req_method("DELETE") %>%
       req_url_query(id = paste0("eq.", id)) %>%
       req_perform()
     TRUE
   }, error = function(e) {
-    message("Delivable 삭제 중 오류 발생: ", e$message)
+    message("deliverable 삭제 중 오류 발생: ", e$message)
     FALSE
   })
 }
@@ -577,7 +577,7 @@ events_apply_realtime_payload <- function(current_df, input_value) {
   current_df
 }
 
-# --- major/delivable도 동일 패턴 적용 ---
+# --- major/deliverable도 동일 패턴 적용 ---
 
 major_coerce_schema <- function(df) {
   tmpl <- empty_major()
@@ -657,8 +657,8 @@ major_apply_realtime_payload <- function(current_df, input_value) {
   current_df
 }
 
-delivable_coerce_schema <- function(df) {
-  tmpl <- empty_delivable()
+deliverable_coerce_schema <- function(df) {
+  tmpl <- empty_deliverable()
   if (is.null(df) || nrow(df) == 0) return(tmpl)
   
   df <- as.data.frame(df, stringsAsFactors = FALSE)
@@ -669,15 +669,15 @@ delivable_coerce_schema <- function(df) {
   }
   
   df <- df[, names(tmpl), drop = FALSE]
-  df <- normalize_delivable_df(df)
+  df <- normalize_deliverable_df(df)
   df$id <- suppressWarnings(as.integer(df$id))
   df$isoweek <- suppressWarnings(as.integer(df$isoweek))
   df
 }
 
-delivable_upsert_row <- function(df, row_df) {
-  df <- delivable_coerce_schema(df)
-  row_df <- delivable_coerce_schema(row_df)
+deliverable_upsert_row <- function(df, row_df) {
+  df <- deliverable_coerce_schema(df)
+  row_df <- deliverable_coerce_schema(row_df)
   if (nrow(row_df) == 0) return(df)
   
   id <- row_df$id[1]
@@ -691,14 +691,14 @@ delivable_upsert_row <- function(df, row_df) {
     for (nm in names(out)) out[[nm]][idx] <- row_df[[nm]][1]
   }
   
-  out <- delivable_coerce_schema(out)
+  out <- deliverable_coerce_schema(out)
   out <- out[order(out$deadline, out$id), , drop = FALSE]
   rownames(out) <- NULL
   out
 }
 
-delivable_delete_id <- function(df, id) {
-  df <- delivable_coerce_schema(df)
+deliverable_delete_id <- function(df, id) {
+  df <- deliverable_coerce_schema(df)
   id <- suppressWarnings(as.integer(id))
   if (is.na(id) || nrow(df) == 0) return(df)
   out <- df[df$id != id, , drop = FALSE]
@@ -706,7 +706,7 @@ delivable_delete_id <- function(df, id) {
   out
 }
 
-delivable_apply_realtime_payload <- function(current_df, input_value) {
+deliverable_apply_realtime_payload <- function(current_df, input_value) {
   payload <- input_value$payload %||% input_value
   if (is.null(payload)) return(current_df)
   
@@ -722,14 +722,14 @@ delivable_apply_realtime_payload <- function(current_df, input_value) {
       error = function(e) NULL
     )
     if (is.null(row_df) || nrow(row_df) == 0) return(current_df)
-    row_df <- delivable_coerce_schema(row_df)
-    return(delivable_upsert_row(current_df, row_df))
+    row_df <- deliverable_coerce_schema(row_df)
+    return(deliverable_upsert_row(current_df, row_df))
   }
   
   if (ev_type == "DELETE") {
     old <- payload$old
     id <- old$id %||% old[["id"]]
-    return(delivable_delete_id(current_df, id))
+    return(deliverable_delete_id(current_df, id))
   }
   
   current_df
@@ -875,7 +875,7 @@ login_ui <- page_fluid(
       class = "login-card",
       card_header(class = "bg-primary text-white", div(bs_icon("google"), " 로그인")),
       card_body(
-        tags$p(class = "text-muted", "Supabase Auth (Google OAuth)로 로그인합니다."),
+        # tags$p(class = "text-muted", "Supabase Auth (Google OAuth)로 로그인합니다."),
         tags$button(
           id = "sb_login_google",
           type = "button",
@@ -890,7 +890,7 @@ login_ui <- page_fluid(
 )
 
 main_ui <- page_navbar(
-  title = div(bs_icon("calendar3"), "팀 일정 공유 캘린더"),
+  title = div(bs_icon("calendar3"), "3사업부 주간 회의 캘린더"),
   theme = THEME,
   
   header = tagList(
@@ -1078,8 +1078,8 @@ main_ui <- page_navbar(
   ),
   
   nav_panel(
-    title = div(bs_icon("check2-circle"), " Delivable"),
-    value = "delivable_tab",
+    title = div(bs_icon("check2-circle"), " Deliverable"),
+    value = "deliverable_tab",
     card(
       full_screen = TRUE,
       card_header(
@@ -1088,18 +1088,18 @@ main_ui <- page_navbar(
           class = "d-flex justify-content-between align-items-center flex-wrap gap-2",
           div(
             bs_icon("check2-circle"),
-            span(class = "ms-2 fw-bold", "Delivable"),
+            span(class = "ms-2 fw-bold", "Deliverable"),
             tags$small(class = "ms-2 text-muted", "행 선택 후 수정/삭제")
           ),
           div(
             class = "d-flex gap-2",
-            actionButton("delivable_add", div(bs_icon("plus-circle"), "추가"), class = "btn-primary"),
-            actionButton("delivable_edit", div(bs_icon("pencil"), "수정"), class = "btn-outline-primary"),
-            actionButton("delivable_delete", div(bs_icon("trash"), "삭제"), class = "btn-outline-danger")
+            actionButton("deliverable_add", div(bs_icon("plus-circle"), "추가"), class = "btn-primary"),
+            actionButton("deliverable_edit", div(bs_icon("pencil"), "수정"), class = "btn-outline-primary"),
+            actionButton("deliverable_delete", div(bs_icon("trash"), "삭제"), class = "btn-outline-danger")
           )
         )
       ),
-      card_body(DT::DTOutput("delivable_table"))
+      card_body(DT::DTOutput("deliverable_table"))
     )
   )
 )
