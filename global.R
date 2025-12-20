@@ -173,7 +173,7 @@ SUPABASE_ANON_KEY <- Sys.getenv("SUPABASE_ANON_KEY")
 
 SUPABASE_EVENTS_TABLE <- Sys.getenv("SUPABASE_EVENTS_TABLE", unset = "events")
 SUPABASE_MAJOR_TABLE <- Sys.getenv("SUPABASE_MAJOR_TABLE", unset = "major_schedules")
-SUPABASE_deliverable_TABLE <- Sys.getenv("SUPABASE_deliverable_TABLE", unset = "deliverable_items")
+SUPABASE_DELIVERABLE_TABLE <- Sys.getenv("SUPABASE_DELIVERABLE_TABLE", unset = "deliverable_items")
 
 validate_supabase_config <- function() {
   if (!nzchar(SUPABASE_URL) || !nzchar(SUPABASE_ANON_KEY)) {

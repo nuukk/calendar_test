@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS major_schedules (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-create table public.delivable_items (
+create table public.deliverable_items (
   id        bigint generated always as identity primary key,
   isoweek   integer not null,
   deadline  date not null,
@@ -54,11 +54,11 @@ create table public.delivable_items (
 
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE major_schedules ENABLE ROW LEVEL SECURITY;
-ALTER TABLE delivable_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deliverable_items ENABLE ROW LEVEL SECURITY;
 
 alter publication supabase_realtime add table public.events;
 alter publication supabase_realtime add table public.major_schedules;
-alter publication supabase_realtime add table public.delivable_items;
+alter publication supabase_realtime add table public.deliverable_items;
 
 <!-- 권한 -->
 <!-- (C) authenticated: SELECT 전체 허용 (Realtime payload를 위해 핵심) -->
@@ -76,9 +76,9 @@ for select
 to authenticated
 using (true);
 
-drop policy if exists authenticated_select_all_delivable on public.delivable_items;
+drop policy if exists authenticated_select_all_delivable on public.deliverable_items;
 create policy authenticated_select_all_delivable
-on public.delivable_items
+on public.deliverable_items
 for select
 to authenticated
 using (true);
@@ -114,17 +114,17 @@ for delete
 to authenticated
 using (true);
 
-drop policy if exists authenticated_update_all_delivable on public.delivable_items;
+drop policy if exists authenticated_update_all_delivable on public.deliverable_items;
 create policy authenticated_update_all_delivable
-on public.delivable_items
+on public.deliverable_items
 for update
 to authenticated
 using (true)
 with check (true);
 
-drop policy if exists authenticated_delete_all_delivable on public.delivable_items;
+drop policy if exists authenticated_delete_all_delivable on public.deliverable_items;
 create policy authenticated_delete_all_delivable
-on public.delivable_items
+on public.deliverable_items
 for delete
 to authenticated
 using (true);
@@ -144,22 +144,22 @@ for insert
 to authenticated
 with check (true);
 
-drop policy if exists authenticated_insert_all_delivable on public.delivable_items;
+drop policy if exists authenticated_insert_all_delivable on public.deliverable_items;
 create policy authenticated_insert_all_delivable
-on public.delivable_items
+on public.deliverable_items
 for insert
 to authenticated
 with check (true);
 
 <!-- (F) GRANT도 필요할 수 있음(프로젝트 기본값에 따라 다름) ->
 grant usage on schema public to authenticated;
-grant select, insert, update, delete on table public.events, public.major_schedules, public.delivable_items to authenticated;
+grant select, insert, update, delete on table public.events, public.major_schedules, public.deliverable_items to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 
 <!--  Supabase 테이블 REPLICA IDENTITY 설정 -->
 ALTER TABLE events REPLICA IDENTITY FULL;
 ALTER TABLE major_schedules REPLICA IDENTITY FULL;
-ALTER TABLE delivable_items REPLICA IDENTITY FULL;
+ALTER TABLE deliverable_items REPLICA IDENTITY FULL;
 
 
 ### Authentication
