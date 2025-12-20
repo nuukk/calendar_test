@@ -60,8 +60,8 @@ alter publication supabase_realtime add table public.events;
 alter publication supabase_realtime add table public.major_schedules;
 alter publication supabase_realtime add table public.delivable_items;
 
--- 권한 --
--- (C) authenticated: SELECT 전체 허용 (Realtime payload를 위해 핵심)
+<!-- 권한 -->
+<!-- (C) authenticated: SELECT 전체 허용 (Realtime payload를 위해 핵심) -->
 drop policy if exists authenticated_select_all_events on public.events;
 create policy authenticated_select_all_events
 on public.events
@@ -83,7 +83,7 @@ for select
 to authenticated
 using (true);
 
--- (D) authenticated: UPDATE/DELETE 전체 허용
+<!-- (D) authenticated: UPDATE/DELETE 전체 허용 -->
 drop policy if exists authenticated_update_all_events on public.events;
 create policy authenticated_update_all_events
 on public.events
@@ -129,7 +129,7 @@ for delete
 to authenticated
 using (true);
 
--- (E) (권장) 앱에서 추가(INSERT)도 하는 경우 같이 허용
+<!-- (E) (권장) 앱에서 추가(INSERT)도 하는 경우 같이 허용 -->
 drop policy if exists authenticated_insert_all_events on public.events;
 create policy authenticated_insert_all_events
 on public.events
@@ -151,10 +151,15 @@ for insert
 to authenticated
 with check (true);
 
--- (F) GRANT도 필요할 수 있음(프로젝트 기본값에 따라 다름)
+<!-- (F) GRANT도 필요할 수 있음(프로젝트 기본값에 따라 다름) ->
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on table public.events, public.major_schedules, public.delivable_items to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
+
+<!--  Supabase 테이블 REPLICA IDENTITY 설정 -->
+ALTER TABLE events REPLICA IDENTITY FULL;
+ALTER TABLE major_schedules REPLICA IDENTITY FULL;
+ALTER TABLE delivable_items REPLICA IDENTITY FULL;
 
 
 ### Authentication
