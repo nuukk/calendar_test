@@ -9,16 +9,10 @@ server <- function(input, output, session) {
   access_token_rv <- reactiveVal(NULL)
   
   # ✅ 권장: USER_COLORS/USER_NAMES 중 하나에라도 있으면 허용
-  ALLOWED_EMAILS_SAFE <- ALLOWED_EMAILS
+  ALLOWED_EMAILS_SAFE <- unique(c(names(USER_COLORS), names(USER_NAMES)))
   
   is_allowed_email <- function(em) {
-    em <- normalize_email(em)
-    em %in% ALLOWED_EMAILS_SAFE
-  }
-  
-  # 앱 시작 시 설정 오류가 있으면 로그인 화면에 먼저 띄움
-  if (exists("CONFIG_ERRORS") && length(CONFIG_ERRORS) > 0) {
-    login_msg(paste0("설정 오류: ", paste(CONFIG_ERRORS, collapse = " / ")))
+    if (length(ALLOWED_EMAILS_SAFE) == 0) TRUE else em %in% ALLOWED_EMAILS_SAFE
   }
   
   authed <- reactive({
@@ -28,14 +22,6 @@ server <- function(input, output, session) {
   })
   
   observeEvent(list(input$sb_user_email, input$sb_access_token), {
-    if (exists("CONFIG_ERRORS") && length(CONFIG_ERRORS) > 0) {
-      login_msg(paste0("설정 오류: ", paste(CONFIG_ERRORS, collapse = " / ")))
-      user_email_rv(NULL)
-      access_token_rv(NULL)
-      session$sendCustomMessage("sb_signOut", list())
-      return()
-    }
-    
     em <- trimws(tolower(input$sb_user_email %||% ""))
     tok <- input$sb_access_token %||% ""
     
@@ -1031,8 +1017,6 @@ server <- function(input, output, session) {
       hol_js, hol_md_js
     ))
     
-    creator_ids <- unique(df$creator_email)
-    
     cal_obj <- calendar(
       view = view,
       defaultDate = Sys.Date(),
@@ -1043,7 +1027,7 @@ server <- function(input, output, session) {
       gridSelection = TRUE,
       navOpts = navigation_options(today_label = "오늘", prev_label = "<", next_label = ">")
     ) %>%
-      cal_props(build_calendar_props(creator_ids)) %>%
+      cal_props(build_calendar_props()) %>%
       cal_theme(
         common.holiday.color = "#dc3545",
         common.saturday.color = "#dc3545"
