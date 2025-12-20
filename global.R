@@ -531,26 +531,31 @@ normalize_single_event_row <- function(x) {
   events_coerce_schema(df)
 }
 
-events_apply_realtime_payload <- function(current_df, input_value) {
-  payload <- input_value$payload %||% input_value
-  if (is.null(payload)) return(current_df)
+events_apply_realtime_payload <- function(df, rt) {
+  payload <- rt$payload
+  if (is.null(payload)) return(df)
   
-  ev_type <- payload$eventType %||% payload$type %||% payload$event_type %||% NA_character_
-  ev_type <- toupper(as.character(ev_type %||% ""))
-  
-  if (ev_type %in% c("INSERT", "UPDATE")) {
-    row_df <- normalize_single_event_row(payload$new)
-    if (is.null(row_df)) return(current_df)
-    return(events_upsert_row(current_df, row_df))
-  }
-  
-  if (ev_type == "DELETE") {
+  event_type <- payload$eventType
+  if (event_type == "INSERT") {
+    new_row <- payload$new
+    if (!is.null(new_row)) {
+      new_df <- normalize_events_df(as.data.frame(new_row, stringsAsFactors = FALSE))
+      df <- events_upsert_row(df, new_df)
+    }
+  } else if (event_type == "UPDATE") {
+    new_row <- payload$new
+    if (!is.null(new_row)) {
+      new_df <- normalize_events_df(as.data.frame(new_row, stringsAsFactors = FALSE))
+      df <- events_upsert_row(df, new_df)
+    }
+  } else if (event_type == "DELETE") {
     old <- payload$old
-    id <- old$id %||% old[["id"]]
-    return(events_delete_id(current_df, id))
+    id <- old$id
+    if (!is.null(id)) {
+      df <- events_delete_id(df, id)
+    }
   }
-  
-  current_df
+  df
 }
 
 # --- major/delivable도 동일 패턴(원하면 events만 써도 됨) ---
