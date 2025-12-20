@@ -101,7 +101,7 @@ server <- function(input, output, session) {
   # -------------------------------------------------
   events_rv <- reactiveVal(empty_events())
   major_rv <- reactiveVal(empty_major())
-  delivable_rv <- reactiveVal(empty_delivable())
+  deliverable_rv <- reactiveVal(empty_deliverable())
   
   # 로그인/로그아웃 시 초기 로드/초기화
   observeEvent(authed(), {
@@ -109,11 +109,11 @@ server <- function(input, output, session) {
       jwt <- current_jwt()
       events_rv(fetch_events(jwt))
       major_rv(fetch_major(jwt))
-      delivable_rv(fetch_delivable(jwt))
+      deliverable_rv(fetch_deliverable(jwt))
     } else {
       events_rv(empty_events())
       major_rv(empty_major())
-      delivable_rv(empty_delivable())
+      deliverable_rv(empty_deliverable())
     }
   }, ignoreInit = FALSE)
   
@@ -123,15 +123,15 @@ server <- function(input, output, session) {
     events_rv(events_apply_realtime_payload(events_rv(), input$sb_rt_events))
   }, ignoreInit = TRUE)
   
-  # (선택) major/delivable도 동일하게 증분 업데이트
+  # (선택) major/deliverable도 동일하게 증분 업데이트
   observeEvent(input$sb_rt_major, {
     req(authed())
     major_rv(major_apply_realtime_payload(major_rv(), input$sb_rt_major))
   }, ignoreInit = TRUE)
   
-  observeEvent(input$sb_rt_delivable, {
+  observeEvent(input$sb_rt_deliverable, {
     req(authed())
-    delivable_rv(delivable_apply_realtime_payload(delivable_rv(), input$sb_rt_delivable))
+    deliverable_rv(deliverable_apply_realtime_payload(deliverable_rv(), input$sb_rt_deliverable))
   }, ignoreInit = TRUE)
   
   # 폴백: 누락/재연결 대비 full sync (5분)
@@ -141,7 +141,7 @@ server <- function(input, output, session) {
     jwt <- current_jwt()
     events_rv(fetch_events(jwt))
     major_rv(fetch_major(jwt))
-    delivable_rv(fetch_delivable(jwt))
+    deliverable_rv(fetch_deliverable(jwt))
   })
   
   # -------------------------------------------------
@@ -151,7 +151,7 @@ server <- function(input, output, session) {
   viewing_event_id <- reactiveVal(NULL)
   
   major_editing_id <- reactiveVal(NULL)
-  delivable_editing_id <- reactiveVal(NULL)
+  deliverable_editing_id <- reactiveVal(NULL)
   
   clear_calendar_selection <- function() {
     session$sendCustomMessage("clearCalendarSelection", list())
@@ -451,16 +451,16 @@ server <- function(input, output, session) {
   # -------------------------------------------------
   # ✅ Delivable (DT + CRUD)
   # -------------------------------------------------
-  delivable_table_data <- reactive({
-    df <- delivable_rv()
-    if (is.null(df) || nrow(df) == 0) return(empty_delivable())
+  deliverable_table_data <- reactive({
+    df <- deliverable_rv()
+    if (is.null(df) || nrow(df) == 0) return(empty_deliverable())
     df %>% mutate(deadline = as.Date(deadline)) %>% arrange(deadline, id)
   })
   
-  output$delivable_table <- DT::renderDT({
+  output$deliverable_table <- DT::renderDT({
     req(authed())
-    df <- delivable_table_data()
-    if (is.null(df) || nrow(df) == 0) df <- empty_delivable()
+    df <- deliverable_table_data()
+    if (is.null(df) || nrow(df) == 0) df <- empty_deliverable()
     
     assignee_display <- vapply(df$assignees, function(x) {
       if (is.na(x) || !nzchar(x)) return("")
@@ -492,35 +492,35 @@ server <- function(input, output, session) {
   
   observe({
     req(authed())
-    sel <- input$delivable_table_rows_selected
+    sel <- input$deliverable_table_rows_selected
     if (is.null(sel) || length(sel) == 0) {
-      shinyjs::disable("delivable_edit")
-      shinyjs::disable("delivable_delete")
+      shinyjs::disable("deliverable_edit")
+      shinyjs::disable("deliverable_delete")
     } else {
-      shinyjs::enable("delivable_edit")
-      shinyjs::enable("delivable_delete")
+      shinyjs::enable("deliverable_edit")
+      shinyjs::enable("deliverable_delete")
     }
   })
   
-  delivable_selected_id <- reactive({
+  deliverable_selected_id <- reactive({
     req(authed())
-    sel <- input$delivable_table_rows_selected
+    sel <- input$deliverable_table_rows_selected
     if (is.null(sel) || length(sel) == 0) return(NULL)
     
-    df <- delivable_table_data()
+    df <- deliverable_table_data()
     if (is.null(df) || nrow(df) == 0) return(NULL)
     if (sel > nrow(df)) return(NULL)
     
     df$id[sel]
   })
   
-  show_delivable_modal <- function(row = NULL) {
+  show_deliverable_modal <- function(row = NULL) {
     req(authed())
     
     choices <- get_participant_choices_new()
     
     if (is.null(row)) {
-      delivable_editing_id(NULL)
+      deliverable_editing_id(NULL)
       d0 <- Sys.Date()
       assignees0 <- character(0)
       content0 <- ""
@@ -528,7 +528,7 @@ server <- function(input, output, session) {
       note0 <- ""
       modal_title <- "Delivable 추가"
     } else {
-      delivable_editing_id(row$id[1])
+      deliverable_editing_id(row$id[1])
       d0 <- as.Date(row$deadline[1])
       raw_assignees <- row$assignees[1]
       if (is.na(raw_assignees)) raw_assignees <- ""
@@ -544,39 +544,39 @@ server <- function(input, output, session) {
       modalDialog(
         title = div(bs_icon("check2-circle"), paste0(" ", modal_title)),
         size = "l",
-        dateInput("delivable_deadline", div(bs_icon("calendar-event"), "마감일"), value = d0),
-        checkboxGroupInput("delivable_assignees", div(bs_icon("people"), "담당"), choices = choices, selected = assignees0, inline = FALSE),
-        textAreaInput("delivable_content", div(bs_icon("pencil"), "내용"), value = content0, rows = 3),
-        selectInput("delivable_status", div(bs_icon("flag"), "완료"), choices = c("DONE", "Holding"), selected = status0),
-        textAreaInput("delivable_note", div(bs_icon("chat-left-text"), "비고"), value = note0, rows = 3),
+        dateInput("deliverable_deadline", div(bs_icon("calendar-event"), "마감일"), value = d0),
+        checkboxGroupInput("deliverable_assignees", div(bs_icon("people"), "담당"), choices = choices, selected = assignees0, inline = FALSE),
+        textAreaInput("deliverable_content", div(bs_icon("pencil"), "내용"), value = content0, rows = 3),
+        selectInput("deliverable_status", div(bs_icon("flag"), "완료"), choices = c("DONE", "Holding"), selected = status0),
+        textAreaInput("deliverable_note", div(bs_icon("chat-left-text"), "비고"), value = note0, rows = 3),
         footer = tagList(
           modalButton("취소"),
-          actionButton("delivable_save", div(bs_icon("check-circle"), "저장"), class = "btn-primary")
+          actionButton("deliverable_save", div(bs_icon("check-circle"), "저장"), class = "btn-primary")
         ),
         easyClose = TRUE
       )
     )
   }
   
-  observeEvent(input$delivable_add, {
+  observeEvent(input$deliverable_add, {
     req(authed())
-    show_delivable_modal(NULL)
+    show_deliverable_modal(NULL)
   }, ignoreInit = TRUE)
   
-  observeEvent(input$delivable_edit, {
+  observeEvent(input$deliverable_edit, {
     req(authed())
-    id <- delivable_selected_id()
+    id <- deliverable_selected_id()
     req(id)
     
-    df <- delivable_table_data()
+    df <- deliverable_table_data()
     row <- df[df$id == id, , drop = FALSE]
     if (nrow(row) == 0) return()
-    show_delivable_modal(row[1, ])
+    show_deliverable_modal(row[1, ])
   }, ignoreInit = TRUE)
   
-  observeEvent(input$delivable_delete, {
+  observeEvent(input$deliverable_delete, {
     req(authed())
-    id <- delivable_selected_id()
+    id <- deliverable_selected_id()
     req(id)
     
     showModal(
@@ -585,32 +585,32 @@ server <- function(input, output, session) {
         div(class = "alert alert-danger", "선택한 Delivable 항목을 삭제하시겠습니까?"),
         footer = tagList(
           modalButton("아니오"),
-          actionButton("delivable_confirm_delete", "예", class = "btn-danger")
+          actionButton("deliverable_confirm_delete", "예", class = "btn-danger")
         ),
         easyClose = TRUE
       )
     )
   }, ignoreInit = TRUE)
   
-  observeEvent(input$delivable_confirm_delete, {
+  observeEvent(input$deliverable_confirm_delete, {
     req(authed())
     removeModal()
     
-    id <- delivable_selected_id()
+    id <- deliverable_selected_id()
     req(id)
     
-    deleted <- delete_delivable_supabase(id, jwt = current_jwt())
+    deleted <- delete_deliverable_supabase(id, jwt = current_jwt())
     if (isTRUE(deleted)) {
-      delivable_rv(delivable_delete_id(delivable_rv(), id))
+      deliverable_rv(deliverable_delete_id(deliverable_rv(), id))
     }
     
     showNotification(div(bs_icon("trash"), "Delivable 항목이 삭제되었습니다."), type = "message")
   }, ignoreInit = TRUE)
   
-  observeEvent(input$delivable_save, {
+  observeEvent(input$deliverable_save, {
     req(authed())
     
-    d <- as.Date(input$delivable_deadline)
+    d <- as.Date(input$deliverable_deadline)
     if (is.na(d)) {
       showNotification("마감일을 입력하세요.", type = "error")
       return()
@@ -618,18 +618,18 @@ server <- function(input, output, session) {
     
     iso <- as.integer(lubridate::isoweek(d))
     
-    assignees <- input$delivable_assignees
+    assignees <- input$deliverable_assignees
     if (is.null(assignees)) assignees <- character(0)
     assignees <- paste(assignees, collapse = ",")
     
-    content <- trimws(input$delivable_content %||% "")
-    status <- input$delivable_status %||% "Holding"
-    note <- trimws(input$delivable_note %||% "")
+    content <- trimws(input$deliverable_content %||% "")
+    status <- input$deliverable_status %||% "Holding"
+    note <- trimws(input$deliverable_note %||% "")
     
-    id <- isolate(delivable_editing_id())
+    id <- isolate(deliverable_editing_id())
     
     if (is.null(id)) {
-      inserted <- insert_delivable_supabase(list(
+      inserted <- insert_deliverable_supabase(list(
         isoweek = iso,
         deadline = format(d, "%Y-%m-%d"),
         assignees = assignees,
@@ -639,9 +639,9 @@ server <- function(input, output, session) {
       ), jwt = current_jwt())
       
       if (!is.null(inserted) && nrow(inserted) > 0) {
-        delivable_rv(delivable_upsert_row(delivable_rv(), inserted[1, , drop = FALSE]))
+        deliverable_rv(deliverable_upsert_row(deliverable_rv(), inserted[1, , drop = FALSE]))
       } else {
-        delivable_rv(fetch_delivable(current_jwt()))
+        deliverable_rv(fetch_deliverable(current_jwt()))
       }
       
       removeModal()
@@ -649,7 +649,7 @@ server <- function(input, output, session) {
       return()
     }
     
-    updated <- update_delivable_supabase(id, list(
+    updated <- update_deliverable_supabase(id, list(
       isoweek = iso,
       deadline = format(d, "%Y-%m-%d"),
       assignees = assignees,
@@ -659,9 +659,9 @@ server <- function(input, output, session) {
     ), jwt = current_jwt())
     
     if (!is.null(updated) && nrow(updated) > 0) {
-      delivable_rv(delivable_upsert_row(delivable_rv(), updated[1, , drop = FALSE]))
+      deliverable_rv(deliverable_upsert_row(deliverable_rv(), updated[1, , drop = FALSE]))
     } else {
-      delivable_rv(fetch_delivable(current_jwt()))
+      deliverable_rv(fetch_deliverable(current_jwt()))
     }
     
     removeModal()
