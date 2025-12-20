@@ -455,6 +455,22 @@ delete_delivable_supabase <- function(id, jwt = NULL) {
 # -------------------------------------------------
 # 3-3) ✅ Realtime payload 기반 "증분 업데이트" helpers
 # -------------------------------------------------
+clean_realtime_payload_list <- function(x) {
+  if (is.null(x)) return(NULL)
+  if (!is.list(x)) return(x)
+  
+  lapply(x, function(val) {
+    # 1. NULL이면 NA로 변환 (as.data.frame 에러 방지)
+    if (is.null(val)) return(NA)
+    
+    # 2. 리스트(예: memo_history)인 경우, I(list(val))로 감싸서
+    #    as.data.frame 변환 시 행이 늘어나거나 에러가 나는 것을 방지
+    if (is.list(val)) return(I(list(val)))
+    
+    return(val)
+  })
+}
+
 na_like <- function(x0, n) {
   if (inherits(x0, "Date")) return(rep(as.Date(NA), n))
   if (is.integer(x0)) return(rep(NA_integer_, n))
@@ -523,42 +539,46 @@ events_delete_id <- function(df, id) {
 
 normalize_single_event_row <- function(x) {
   if (is.null(x)) return(NULL)
+  
+  # [수정됨] NULL 처리 적용
+  x_clean <- clean_realtime_payload_list(x)
+  
   df <- tryCatch(
-    as.data.frame(x, stringsAsFactors = FALSE),
-    error = function(e) NULL
+    as.data.frame(x_clean, stringsAsFactors = FALSE),
+    error = function(e) {
+      # 디버깅용 로그 (필요시 주석 해제)
+      # message("[Events Realtime Error] ", e$message)
+      NULL
+    }
   )
   if (is.null(df) || nrow(df) == 0) return(NULL)
   events_coerce_schema(df)
 }
 
-events_apply_realtime_payload <- function(df, rt) {
-  payload <- rt$payload
-  if (is.null(payload)) return(df)
+events_apply_realtime_payload <- function(current_df, input_value) {
+  payload <- input_value$payload %||% input_value
+  if (is.null(payload)) return(current_df)
   
-  event_type <- payload$eventType
-  if (event_type == "INSERT") {
-    new_row <- payload$new
-    if (!is.null(new_row)) {
-      new_df <- normalize_events_df(as.data.frame(new_row, stringsAsFactors = FALSE))
-      df <- events_upsert_row(df, new_df)
-    }
-  } else if (event_type == "UPDATE") {
-    new_row <- payload$new
-    if (!is.null(new_row)) {
-      new_df <- normalize_events_df(as.data.frame(new_row, stringsAsFactors = FALSE))
-      df <- events_upsert_row(df, new_df)
-    }
-  } else if (event_type == "DELETE") {
-    old <- payload$old
-    id <- old$id
-    if (!is.null(id)) {
-      df <- events_delete_id(df, id)
-    }
+  ev_type <- payload$eventType %||% payload$type %||% payload$event_type %||% NA_character_
+  ev_type <- toupper(as.character(ev_type %||% ""))
+  
+  if (ev_type %in% c("INSERT", "UPDATE")) {
+    row_df <- normalize_single_event_row(payload$new)
+    if (is.null(row_df)) return(current_df)
+    return(events_upsert_row(current_df, row_df))
   }
-  df
+  
+  if (ev_type == "DELETE") {
+    old <- payload$old
+    id <- old$id %||% old[["id"]]
+    return(events_delete_id(current_df, id))
+  }
+  
+  current_df
 }
 
-# --- major/delivable도 동일 패턴(원하면 events만 써도 됨) ---
+# --- major/delivable도 동일 패턴 적용 ---
+
 major_coerce_schema <- function(df) {
   tmpl <- empty_major()
   if (is.null(df) || nrow(df) == 0) return(tmpl)
@@ -616,7 +636,13 @@ major_apply_realtime_payload <- function(current_df, input_value) {
   ev_type <- toupper(as.character(ev_type %||% ""))
   
   if (ev_type %in% c("INSERT", "UPDATE")) {
-    row_df <- tryCatch(as.data.frame(payload$new, stringsAsFactors = FALSE), error = function(e) NULL)
+    # [수정됨] NULL 처리 적용
+    x_clean <- clean_realtime_payload_list(payload$new)
+    
+    row_df <- tryCatch(
+      as.data.frame(x_clean, stringsAsFactors = FALSE), 
+      error = function(e) NULL
+    )
     if (is.null(row_df) || nrow(row_df) == 0) return(current_df)
     row_df <- major_coerce_schema(row_df)
     return(major_upsert_row(current_df, row_df))
@@ -688,7 +714,13 @@ delivable_apply_realtime_payload <- function(current_df, input_value) {
   ev_type <- toupper(as.character(ev_type %||% ""))
   
   if (ev_type %in% c("INSERT", "UPDATE")) {
-    row_df <- tryCatch(as.data.frame(payload$new, stringsAsFactors = FALSE), error = function(e) NULL)
+    # [수정됨] NULL 처리 적용
+    x_clean <- clean_realtime_payload_list(payload$new)
+    
+    row_df <- tryCatch(
+      as.data.frame(x_clean, stringsAsFactors = FALSE), 
+      error = function(e) NULL
+    )
     if (is.null(row_df) || nrow(row_df) == 0) return(current_df)
     row_df <- delivable_coerce_schema(row_df)
     return(delivable_upsert_row(current_df, row_df))
