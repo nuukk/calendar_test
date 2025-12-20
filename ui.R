@@ -16,7 +16,7 @@ ui <- tagList(
           tables = list(
             events = SUPABASE_EVENTS_TABLE,
             major = SUPABASE_MAJOR_TABLE,
-            deliverable = SUPABASE_DELIVABLE_TABLE
+            deliverable = SUPABASE_DELIVERABLE_TABLE
           )
         ),
         auto_unbox = TRUE
