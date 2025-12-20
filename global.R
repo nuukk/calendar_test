@@ -863,7 +863,7 @@ THEME <- bs_theme(
 # 6) UI 정의 (server.R에서 참조하기 위해 global에 정의)
 # -------------------------------------------------
 login_ui <- page_fluid(
-  title = "zzz",
+  title = "주간 회의 캘린더",
   theme = THEME,
   tags$head(tags$style(HTML("
     .login-wrap {max-width: 520px; margin: 0 auto;}
