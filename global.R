@@ -1066,3 +1066,20 @@ main_ui <- page_navbar(
     )
   )
 )
+
+# ✅ 디버깅 로그 추가
+message("===== ENV DEBUG START =====")
+message("USER_COLORS raw: ", Sys.getenv("USER_COLORS"))
+message("USER_NAMES raw: ", Sys.getenv("USER_NAMES"))
+
+USER_COLORS <- normalize_user_map(parse_env_json(Sys.getenv("USER_COLORS")), value_field = "color")
+USER_NAMES  <- normalize_user_map(parse_env_json(Sys.getenv("USER_NAMES")), value_field = "name")
+
+message("USER_COLORS parsed: ", paste(names(USER_COLORS), "=", USER_COLORS, collapse = ", "))
+message("USER_NAMES parsed: ", paste(names(USER_NAMES), "=", USER_NAMES, collapse = ", "))
+message("===== ENV DEBUG END =====")
+
+if (is.null(USER_COLORS)) USER_COLORS <- character(0)
+if (is.null(USER_NAMES))  USER_NAMES  <- character(0)
+
+ALLOWED_EMAILS <- unique(c(names(USER_COLORS), names(USER_NAMES)))
