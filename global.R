@@ -22,46 +22,8 @@ parse_env_json <- function(x) {
   tryCatch(jsonlite::fromJSON(x, simplifyVector = FALSE), error = function(e) list())
 }
 
-normalize_user_map <- function(raw, value_field = NULL) {
-  if (is.null(raw) || length(raw) == 0) return(character(0))
-  
-  out <- NULL
-  if (is.list(raw)) {
-    if (!is.null(names(raw)) && all(nzchar(names(raw)))) {
-      out <- unlist(raw, use.names = TRUE)
-    } else {
-      entries <- lapply(raw, function(item) {
-        if (!is.list(item)) return(NULL)
-        email <- item$email %||% item$Email %||% item$user %||% item$user_email
-        if (!nzchar(email %||% "")) return(NULL)
-        
-        val <- NULL
-        if (!is.null(value_field)) val <- item[[value_field]]
-        if (is.null(val)) val <- item$value %||% item$name %||% item$color
-        if (is.null(val) || !nzchar(as.character(val))) return(NULL)
-        
-        stats::setNames(as.character(val), email)
-      })
-      
-      out <- unlist(Filter(Negate(is.null), entries), use.names = TRUE)
-    }
-  } else {
-    out <- unlist(raw, use.names = TRUE)
-  }
-  
-  if (is.null(out) || length(out) == 0) return(character(0))
-  
-  nms <- names(out) %||% character(0)
-  if (length(nms) == 0) return(character(0))
-  
-  keep <- !is.na(nms) & nzchar(nms) & !is.na(out) & nzchar(out)
-  out <- out[keep]
-  
-  if (length(out) == 0) character(0) else out
-}
-
-USER_COLORS <- normalize_user_map(parse_env_json(Sys.getenv("USER_COLORS")), value_field = "color")
-USER_NAMES  <- normalize_user_map(parse_env_json(Sys.getenv("USER_NAMES")), value_field = "name")
+USER_COLORS <- unlist(parse_env_json(Sys.getenv("USER_COLORS")), use.names = TRUE)
+USER_NAMES  <- unlist(parse_env_json(Sys.getenv("USER_NAMES")),  use.names = TRUE)
 
 if (is.null(USER_COLORS)) USER_COLORS <- character(0)
 if (is.null(USER_NAMES))  USER_NAMES  <- character(0)

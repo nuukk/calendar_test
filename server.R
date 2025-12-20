@@ -159,22 +159,20 @@ server <- function(input, output, session) {
   
   get_participant_choices_new <- function() {
     me <- current_user_email()
-    all_users <- names(USER_NAMES) %||% character(0)
-    others <- setdiff(all_users, me)
+    others <- setdiff(names(USER_NAMES), me)
     labels <- USER_NAMES[others]
     stats::setNames(others, labels)
   }
   
   get_participant_choices_edit <- function(creator_email) {
-    all_users <- names(USER_NAMES) %||% character(0)
-    others <- setdiff(all_users, creator_email)
+    others <- setdiff(names(USER_NAMES), creator_email)
     labels <- USER_NAMES[others]
     stats::setNames(others, labels)
   }
   
   # ✅ 버그 수정(others 미정의)
   get_all_participant_choices <- function() {
-    all_users <- names(USER_NAMES) %||% character(0)
+    all_users <- names(USER_NAMES)
     labels <- USER_NAMES[all_users]
     stats::setNames(all_users, labels)
   }
