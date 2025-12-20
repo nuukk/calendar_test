@@ -289,7 +289,7 @@ fetch_major <- function(jwt = NULL) {
 
 fetch_deliverable <- function(jwt = NULL) {
   tryCatch({
-    resp <- supabase_request(SUPABASE_deliverable_TABLE, jwt) %>%
+    resp <- supabase_request(SUPABASE_DELIVERABLE_TABLE, jwt) %>%
       req_url_query(select = "*", order = "id.asc") %>%
       req_perform()
     data <- resp_body_json(resp, simplifyVector = TRUE)
@@ -404,7 +404,7 @@ delete_major_supabase <- function(id, jwt = NULL) {
 
 insert_deliverable_supabase <- function(row, jwt = NULL) {
   tryCatch({
-    resp <- supabase_request(SUPABASE_deliverable_TABLE, jwt) %>%
+    resp <- supabase_request(SUPABASE_DELIVERABLE_TABLE, jwt) %>%
       req_method("POST") %>%
       req_headers(Prefer = "return=representation") %>%
       req_body_json(list(row), auto_unbox = TRUE) %>%
@@ -422,7 +422,7 @@ insert_deliverable_supabase <- function(row, jwt = NULL) {
 
 update_deliverable_supabase <- function(id, updates, jwt = NULL) {
   tryCatch({
-    resp <- supabase_request(SUPABASE_deliverable_TABLE, jwt) %>%
+    resp <- supabase_request(SUPABASE_DELIVERABLE_TABLE, jwt) %>%
       req_method("PATCH") %>%
       req_url_query(id = paste0("eq.", id)) %>%
       req_headers(Prefer = "return=representation") %>%
@@ -441,7 +441,7 @@ update_deliverable_supabase <- function(id, updates, jwt = NULL) {
 
 delete_deliverable_supabase <- function(id, jwt = NULL) {
   tryCatch({
-    supabase_request(SUPABASE_deliverable_TABLE, jwt) %>%
+    supabase_request(SUPABASE_DELIVERABLE_TABLE, jwt) %>%
       req_method("DELETE") %>%
       req_url_query(id = paste0("eq.", id)) %>%
       req_perform()
