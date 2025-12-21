@@ -394,7 +394,7 @@ server <- function(input, output, session) {
     
     if (is.null(row)) {
       major_editing_id(NULL)
-      d0 <- Sys.Date()
+      d0 <- as.Date(format(Sys.time(), tz = "Asia/Seoul", format = "%Y-%m-%d"))
       release0 <- ""
       customer0 <- ""
       note0 <- ""
@@ -601,7 +601,7 @@ server <- function(input, output, session) {
     
     if (is.null(row)) {
       deliverable_editing_id(NULL)
-      d0 <- Sys.Date()
+      d0 <- as.Date(format(Sys.time(), tz = "Asia/Seoul", format = "%Y-%m-%d"))
       assignees0 <- character(0)
       content0 <- ""
       status0 <- "Holding"
@@ -751,7 +751,7 @@ server <- function(input, output, session) {
   # -------------------------------------------------
   # ✅ 캘린더 일정 모달 (신규/상세/수정)
   # -------------------------------------------------
-  show_new_event_modal <- function(start_date = Sys.Date(), end_date = start_date) {
+  show_new_event_modal <- function(start_date = as.Date(format(Sys.time(), tz = "Asia/Seoul", format = "%Y-%m-%d")), end_date = start_date) {
     req(authed())
     editing_event_id(NULL)
     clear_calendar_selection()
@@ -1029,7 +1029,7 @@ server <- function(input, output, session) {
     hol <- HOLIDAYS
     hol <- hol[!is.na(hol)]
     hol_ymd <- format(hol, "%Y-%m-%d")
-    hol_md  <- format(hol, "%m/%d")
+    hol_md  <- sprintf("%d/%d", as.integer(format(hol, "%m")), as.integer(format(hol, "%d")))
     
     hol_js <- if (length(hol_ymd) == 0) "[]" else paste0("[", paste(sprintf("'%s'", hol_ymd), collapse = ","), "]")
     hol_md_js <- if (length(hol_md) == 0) "[]" else paste0("[", paste(sprintf("'%s'", hol_md), collapse = ","), "]")
@@ -1083,11 +1083,29 @@ server <- function(input, output, session) {
          var isSat = (u === 'SAT' || dayName === '토');
          var isSun = (u === 'SUN' || dayName === '일');
 
+         // ✅ dateTxt 포맷이 '3/2', '03/02', '3-2', '2026-03-02' 등으로 들어올 수 있어 normalize 후 비교
          var isHoliday = false;
-         if (dateTxt && dateTxt.length >= 10) {
-           isHoliday = (holYMD.indexOf(dateTxt.substring(0, 10)) >= 0);
-         } else if (dateTxt) {
-           isHoliday = (holMD.indexOf(dateTxt) >= 0);
+         if (dateTxt) {
+           var s = dateTxt.toString().trim();
+
+           // 숫자만 남기고 분리: '2026-03-02' -> ['2026','03','02'], '3/2' -> ['3','2']
+           var parts = s.split(/[^0-9]+/).filter(function(x) { return x && x.length > 0; });
+
+           if (parts.length >= 3 && parts[0].length === 4) {
+             // YYYY MM DD
+             var y = parts[0];
+             var m = ('0' + parseInt(parts[1], 10)).slice(-2);
+             var d = ('0' + parseInt(parts[2], 10)).slice(-2);
+             var ymd = y + '-' + m + '-' + d;
+             isHoliday = (holYMD.indexOf(ymd) >= 0);
+           } else if (parts.length >= 2) {
+             // M D  -> 'm/d' 형태로 통일
+             var md = parseInt(parts[0], 10) + '/' + parseInt(parts[1], 10);
+             isHoliday = (holMD.indexOf(md) >= 0);
+           } else {
+             // fallback
+             isHoliday = (holMD.indexOf(s) >= 0);
+           }
          }
 
          var red = (isSat || isSun || isHoliday);
@@ -1101,7 +1119,7 @@ server <- function(input, output, session) {
     
     cal_obj <- calendar(
       view = view,
-      defaultDate = Sys.Date(),
+      defaultDate = as.Date(format(Sys.time(), tz = "Asia/Seoul", format = "%Y-%m-%d")),
       useDetailPopup = FALSE,
       useCreationPopup = FALSE,
       isReadOnly = FALSE,
@@ -1455,7 +1473,8 @@ server <- function(input, output, session) {
   # -------------------------------------------------
   observeEvent(input$new_event, {
     req(authed())
-    show_new_event_modal(Sys.Date(), Sys.Date())
+    d <- as.Date(format(Sys.time(), tz = "Asia/Seoul", format = "%Y-%m-%d"))
+    show_new_event_modal(d, d)
   }, ignoreInit = TRUE)
   
   observeEvent(input$calendar_new_date, {
@@ -1588,8 +1607,8 @@ server <- function(input, output, session) {
         return()
       }
       
-      st <- as.POSIXct(paste(start_date, start_time))
-      et <- as.POSIXct(paste(start_date, end_time))
+      st <- as.POSIXct(paste(start_date, start_time), tz = "Asia/Seoul")
+      et <- as.POSIXct(paste(start_date, end_time), tz = "Asia/Seoul")
       if (!is.na(st) && !is.na(et) && et <= st) {
         showNotification("종료 시간은 시작 시간보다 늦어야 합니다.", type = "error")
         return()
@@ -1625,7 +1644,7 @@ server <- function(input, output, session) {
         memo_history_list <- list(list(
           content = memo,
           author = current_user_name(),
-          time = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+          time = format(Sys.time(), tz = "Asia/Seoul", format = "%Y-%m-%d %H:%M:%S")
         ))
       }
       
@@ -1685,7 +1704,7 @@ server <- function(input, output, session) {
       new_memo_item <- list(
         content = memo,
         author = current_user_name(),
-        time = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+        time = format(Sys.time(), tz = "Asia/Seoul", format = "%Y-%m-%d %H:%M:%S")
       )
       existing_memo_history <- c(existing_memo_history, list(new_memo_item))
     }
