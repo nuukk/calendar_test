@@ -1073,47 +1073,102 @@ server <- function(input, output, session) {
     
     weekDayname_js <- JS(sprintf(
       "function(model) {
-         var holYMD = %s;
-         var holMD  = %s;
+     var holYMD = %s;
+     var holMD  = %s;
 
-         var dateTxt = (model && model.date) ? model.date : '';
-         var dayName = (model && model.dayName) ? model.dayName : '';
+     var dayName = '';
+     var dateTxt = '';
+     var renderDate = '';
+     var dt = null;
 
-         var u = (dayName || '').toString().toUpperCase();
-         var isSat = (u === 'SAT' || dayName === '토');
-         var isSun = (u === 'SUN' || dayName === '일');
+     if (model) {
+       dayName = model.dayName || model.label || '';
+       dateTxt = (model.date !== undefined && model.date !== null) ? model.date : '';
+       renderDate = model.renderDate || model.renderdate || '';
 
-         // ✅ dateTxt 포맷이 '3/2', '03/02', '3-2', '2026-03-02' 등으로 들어올 수 있어 normalize 후 비교
-         var isHoliday = false;
-         if (dateTxt) {
-           var s = dateTxt.toString().trim();
-
-           // 숫자만 남기고 분리: '2026-03-02' -> ['2026','03','02'], '3/2' -> ['3','2']
-           var parts = s.split(/[^0-9]+/).filter(function(x) { return x && x.length > 0; });
-
-           if (parts.length >= 3 && parts[0].length === 4) {
-             // YYYY MM DD
-             var y = parts[0];
-             var m = ('0' + parseInt(parts[1], 10)).slice(-2);
-             var d = ('0' + parseInt(parts[2], 10)).slice(-2);
-             var ymd = y + '-' + m + '-' + d;
-             isHoliday = (holYMD.indexOf(ymd) >= 0);
-           } else if (parts.length >= 2) {
-             // M D  -> 'm/d' 형태로 통일
-             var md = parseInt(parts[0], 10) + '/' + parseInt(parts[1], 10);
-             isHoliday = (holMD.indexOf(md) >= 0);
-           } else {
-             // fallback
-             isHoliday = (holMD.indexOf(s) >= 0);
+       // v2(@toast-ui/calendar): dateInstance(TZDate)가 있으면 우선 사용
+       if (model.dateInstance) {
+         try {
+           if (typeof model.dateInstance.toDate === 'function') {
+             dt = model.dateInstance.toDate();
+           } else if (typeof model.dateInstance.toJSDate === 'function') {
+             dt = model.dateInstance.toJSDate();
+           } else if (model.dateInstance.d) {
+             dt = model.dateInstance.d;
+           } else if (typeof model.dateInstance.getFullYear === 'function') {
+             dt = model.dateInstance;
            }
+         } catch (e) { dt = null; }
+       }
+     }
+
+     function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+     var ymd = '';
+     var md  = '';
+
+     // 1) dateInstance 기반
+     if (dt && typeof dt.getFullYear === 'function') {
+       ymd = dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate());
+       md  = (dt.getMonth() + 1) + '/' + dt.getDate();
+     }
+
+     // 2) 일부 버전/템플릿: {year, month, date} fallback
+     if ((!ymd || !md) && model && model.year !== undefined && model.month !== undefined && model.date !== undefined) {
+       var yNum = parseInt(model.year, 10);
+       var mNum = parseInt(model.month, 10);
+       var dNum = parseInt(model.date, 10);
+       if (!isNaN(yNum) && !isNaN(mNum) && !isNaN(dNum)) {
+         if (mNum >= 0 && mNum <= 11) mNum = mNum + 1; // 0-base 보정
+         ymd = yNum + '-' + pad2(mNum) + '-' + pad2(dNum);
+         md  = mNum + '/' + dNum;
+       }
+     }
+
+     // 3) renderDate/dateTxt 문자열 파싱
+     if (!ymd && !md) {
+       var base = (renderDate || '').toString().trim();
+       if (!base) base = (dateTxt || '').toString().trim();
+
+       var m1 = base.match(/^(\\d{4})[-\\.\\/](\\d{1,2})[-\\.\\/](\\d{1,2})/);
+       if (m1) {
+         ymd = m1[1] + '-' + pad2(parseInt(m1[2], 10)) + '-' + pad2(parseInt(m1[3], 10));
+         md  = parseInt(m1[2], 10) + '/' + parseInt(m1[3], 10);
+       } else {
+         var m2 = base.match(/^(\\d{1,2})[-\\.\\/](\\d{1,2})/);
+         if (m2) {
+           md  = parseInt(m2[1], 10) + '/' + parseInt(m2[2], 10);
          }
+       }
+     }
 
-         var red = (isSat || isSun || isHoliday);
-         var style = red ? ' style=\"color:#dc3545 !important;font-weight:700;\"' : '';
+     // Weekend 판별
+     var u = (dayName || '').toString().toUpperCase();
+     var isSat = (u === 'SAT' || dayName === '토');
+     var isSun = (u === 'SUN' || dayName === '일');
+     if (model && typeof model.day === 'number') {
+       isSun = isSun || (model.day === 0);
+       isSat = isSat || (model.day === 6);
+     }
 
-         return '<span class=\"tui-full-calendar-dayname-date\"' + style + '>' + dateTxt + '</span>&nbsp;&nbsp;' +
-                '<span class=\"tui-full-calendar-dayname-name\"' + style + '>' + dayName + '</span>';
-       }",
+     // Holiday 판별
+     var isHoliday = false;
+     if (ymd) isHoliday = isHoliday || (holYMD.indexOf(ymd) >= 0);
+     if (md) {
+       var parts = md.split('/');
+       var mi = parseInt(parts[0], 10);
+       var di = parseInt(parts[1], 10);
+       var mdNoPad = mi + '/' + di;
+       var mdPad = pad2(mi) + '/' + pad2(di);
+       isHoliday = isHoliday || (holMD.indexOf(mdNoPad) >= 0) || (holMD.indexOf(mdPad) >= 0);
+     }
+
+     var red = (isSat || isSun || isHoliday);
+     var style = red ? ' style=\"color:#dc3545 !important;font-weight:700;\"' : '';
+
+     return '<span class=\"tui-full-calendar-dayname-date\"' + style + '>' + (dateTxt || '') + '</span>&nbsp;&nbsp;' +
+            '<span class=\"tui-full-calendar-dayname-name\"' + style + '>' + (dayName || '') + '</span>';
+   }",
       hol_js, hol_md_js
     ))
     
