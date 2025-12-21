@@ -26,8 +26,8 @@ normalize_user_map <- function(raw, value_field = NULL) {
   if (is.null(raw) || length(raw) == 0) return(character(0))
   
   out <- NULL
-  if (is.list(raw)) {
-    if (!is.null(names(raw)) && all(nzchar(names(raw)))) {
+  if(is.list(raw)) {
+    if(!is.null(names(raw)) && all(nzchar(names(raw)))) {
       out <- unlist(raw, use.names = TRUE)
     } else {
       entries <- lapply(raw, function(item) {
