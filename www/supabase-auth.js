@@ -92,7 +92,7 @@
   // 3) ✅ Realtime(Postgres Changes) 구독 (핵심)
   //    - events  -> sb_rt_events
   //    - major   -> sb_rt_major
-  //    - delivable -> sb_rt_delivable
+  //    - deliverable -> sb_rt_deliverable
   // -------------------------------------------------
   const SCHEMA = (cfg.schema && String(cfg.schema)) ? String(cfg.schema) : "public";
   const tables =
@@ -100,7 +100,7 @@
 
   // 채널 상태(중복 구독 방지)
   const rtState = {
-    channels: {}, // { events: ch, major: ch, delivable: ch }
+    channels: {}, // { events: ch, major: ch, deliverable: ch }
   };
 
   const rtStatus = (obj) => {
@@ -184,7 +184,7 @@
 
     subscribeTable("events", tables.events, "sb_rt_events");
     subscribeTable("major", tables.major, "sb_rt_major");
-    subscribeTable("deliverable", tables.delivable, "sb_rt_delivable");
+    subscribeTable("deliverable", tables.deliverable, "sb_rt_deliverable");
   };
 
   // -------------------------------------------------
