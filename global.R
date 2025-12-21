@@ -875,7 +875,7 @@ login_ui <- page_fluid(
       class = "login-card",
       card_header(class = "bg-primary text-white", div(bs_icon("google"), " 로그인")),
       card_body(
-        # tags$p(class = "text-muted", "Supabase Auth (Google OAuth)로 로그인합니다."),
+        tags$p(class = "text-muted", "구글 계정으로 로그인합니다."),
         tags$button(
           id = "sb_login_google",
           type = "button",

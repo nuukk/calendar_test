@@ -184,7 +184,7 @@
 
     subscribeTable("events", tables.events, "sb_rt_events");
     subscribeTable("major", tables.major, "sb_rt_major");
-    subscribeTable("delivable", tables.delivable, "sb_rt_delivable");
+    subscribeTable("deliverable", tables.delivable, "sb_rt_delivable");
   };
 
   // -------------------------------------------------

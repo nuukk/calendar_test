@@ -103,19 +103,52 @@ server <- function(input, output, session) {
   major_rv <- reactiveVal(empty_major())
   deliverable_rv <- reactiveVal(empty_deliverable())
   
-  # 로그인/로그아웃 시 초기 로드/초기화
+  
+  # -------------------------------------------------
+  # ✅ Realtime 상태 기반 Polling 제어
+  #   - events/major/deliverable 채널이 모두 SUBSCRIBED면 polling OFF
+  #   - 하나라도 SUBSCRIBED가 아니면(끊김/오류/타임아웃 등) 5초 polling ON
+  # -------------------------------------------------
+  rt_channel_status <- reactiveValues(
+    events = NA_character_,
+    major = NA_character_,
+    deliverable = NA_character_
+  )
+  
+  poll_interval_ms <- reactiveVal(0L)  # 0이면 polling OFF
+  poll_busy <- reactiveVal(FALSE)      # 폴링 겹침 방지
+  
+  # 로그인/로그아웃 시 초기 로드/초기화 + ✅ polling 초기 상태 세팅
   observeEvent(authed(), {
     if (isTRUE(authed())) {
       jwt <- current_jwt()
       events_rv(fetch_events(jwt))
       major_rv(fetch_major(jwt))
       deliverable_rv(fetch_deliverable(jwt))
+      
+      # 로그인 직후에는 realtime이 SUBSCRIBED인지 확정되기 전이므로
+      # 끊김으로 간주하고 5초 polling을 켠 상태로 시작
+      poll_interval_ms(5000L)
+      
+      # 채널 상태 리셋
+      rt_channel_status$events <- NA_character_
+      rt_channel_status$major <- NA_character_
+      rt_channel_status$deliverable <- NA_character_
     } else {
       events_rv(empty_events())
       major_rv(empty_major())
       deliverable_rv(empty_deliverable())
+      
+      # 로그아웃이면 polling OFF
+      poll_interval_ms(0L)
+      
+      # 채널 상태 리셋
+      rt_channel_status$events <- NA_character_
+      rt_channel_status$major <- NA_character_
+      rt_channel_status$deliverable <- NA_character_
     }
   }, ignoreInit = FALSE)
+  
   
   # ✅ Realtime payload로 "증분 업데이트"
   observeEvent(input$sb_rt_events, {
@@ -134,10 +167,57 @@ server <- function(input, output, session) {
     deliverable_rv(deliverable_apply_realtime_payload(deliverable_rv(), input$sb_rt_deliverable))
   }, ignoreInit = TRUE)
   
-  # 폴백: 누락/재연결 대비 full sync (5분)
+  # -------------------------------------------------
+  # ✅ Realtime 채널 상태 수신 -> polling ON/OFF 전환
+  #   supabase-auth.js가 sb_rt_status로 kind/status를 보내줌
+  # -------------------------------------------------
+  observeEvent(input$sb_rt_status, {
+    if (!isTRUE(authed())) return()
+    
+    x <- input$sb_rt_status
+    if (is.null(x) || !is.list(x)) return()
+    
+    kind <- tolower(as.character(x$kind %||% ""))
+    status <- toupper(as.character(x$status %||% ""))
+    
+    # 과거 오타(delivable) 대응 (혹시 남아있으면 deliverable로 매핑)
+    if (identical(kind, "delivable")) kind <- "deliverable"
+    
+    if (!nzchar(kind) || !nzchar(status)) return()
+    if (!kind %in% c("events", "major", "deliverable")) return()
+    
+    # 채널별 최신 상태 저장
+    rt_channel_status[[kind]] <- status
+    
+    # 3개 채널이 모두 SUBSCRIBED면 realtime 정상으로 보고 polling OFF
+    st <- c(rt_channel_status$events, rt_channel_status$major, rt_channel_status$deliverable)
+    all_subscribed <- length(st) == 3 &&
+      all(!is.na(st)) &&
+      all(st == "SUBSCRIBED")
+    
+    if (isTRUE(all_subscribed)) {
+      poll_interval_ms(0L)
+    } else {
+      poll_interval_ms(5000L)
+    }
+  }, ignoreInit = TRUE)
+  
+  # -------------------------------------------------
+  # ✅ Polling fallback (Realtime이 끊긴 경우에만 5초 full sync)
+  # -------------------------------------------------
   observe({
     req(authed())
-    invalidateLater(300000, session)
+    
+    interval <- poll_interval_ms()
+    if (is.null(interval) || !is.numeric(interval) || interval <= 0) return()
+    
+    invalidateLater(as.integer(interval), session)
+    
+    # (옵션) 이전 폴링이 아직 진행 중이면 중복 실행 방지
+    if (isTRUE(isolate(poll_busy()))) return()
+    poll_busy(TRUE)
+    on.exit(poll_busy(FALSE), add = TRUE)
+    
     jwt <- current_jwt()
     events_rv(fetch_events(jwt))
     major_rv(fetch_major(jwt))
@@ -720,7 +800,7 @@ server <- function(input, output, session) {
                            choices = participant_choices),
         textAreaInput("event_memo", div(bs_icon("chat-left-text"), "메모"),
                       rows = 3, placeholder = "메모를 입력하세요", value = ""),
-        checkboxInput("event_sync_google", div(bs_icon("google"), "구글 캘린더 연동 (더미)"), value = FALSE),
+        checkboxInput("event_sync_google", div(bs_icon("google"), "구글 캘린더 연동 (예정)"), value = FALSE),
         footer = tagList(
           modalButton("취소"),
           actionButton("save_event", div(bs_icon("check-circle"), "저장"), class = "btn-primary")
@@ -1109,12 +1189,6 @@ server <- function(input, output, session) {
   })
   
   output$unified_timeline <- renderUI({
-    # 원본 코드 그대로(길어서 생략하지 않고 유지해야 함)
-    # 👉 너의 기존 server.R에서 unified timeline 블록을 그대로 붙여 넣어도 되고,
-    #    이미 여기 파일로 교체했을 때는 이 부분 아래가 원본과 동일하게 이어져야 함.
-    #
-    # 실수 방지를 위해: 아래는 "원본 unified timeline 전체"를 그대로 가져온 버전이 필요함.
-    # (너가 원하면 내가 unified timeline 블록까지 포함한 완전본을 이어서 한 번 더 붙여줄게)
     req(authed())
     df <- events_filtered()
     
