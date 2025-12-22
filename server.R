@@ -768,6 +768,32 @@ server <- function(input, output, session) {
           dateInput("event_start_date", div(bs_icon("calendar-event"), "시작일"), value = start_date),
           dateInput("event_end_date", div(bs_icon("calendar-check"), "종료일"), value = end_date)
         ),
+        card(
+          class = "mb-3",
+          card_header(class = "bg-light", div(bs_icon("arrow-repeat"), " 기간 내 요일 선택")),
+          card_body(
+            checkboxInput(
+              "event_use_weekdays",
+              div(bs_icon("calendar-week"), "선택한 요일만 등록"),
+              value = FALSE
+            ),
+            conditionalPanel(
+              condition = "input.event_use_weekdays == true",
+              checkboxGroupInput(
+                "event_weekdays",
+                div(bs_icon("calendar-week"), "요일"),
+                choices = c("월" = 1, "화" = 2, "수" = 3, "목" = 4, "금" = 5, "토" = 6, "일" = 7),
+                selected = c(1, 2, 3, 4, 5),
+                inline = TRUE
+              ),
+              div(
+                class = "text-muted small",
+                bs_icon("info-circle"),
+                " 선택 시 시작일~종료일 범위에서 선택한 요일에 해당하는 날짜마다 하루짜리 일정이 생성됩니다."
+              )
+            )
+          )
+        ),
         selectInput("event_category", div(bs_icon("tag"), "업무 구분"),
                     choices = CATEGORY_OPTIONS, selected = "업무"),
         conditionalPanel(
@@ -937,6 +963,32 @@ server <- function(input, output, session) {
           col_widths = c(6, 6),
           dateInput("event_start_date", div(bs_icon("calendar-event"), "시작일"), value = as.Date(ev$start_date)),
           dateInput("event_end_date", div(bs_icon("calendar-check"), "종료일"), value = as.Date(ev$end_date))
+        ),
+        card(
+          class = "mb-3",
+          card_header(class = "bg-light", div(bs_icon("arrow-repeat"), " 기간 내 요일 선택")),
+          card_body(
+            checkboxInput(
+              "event_use_weekdays",
+              div(bs_icon("calendar-week"), "선택한 요일만 등록"),
+              value = FALSE
+            ),
+            conditionalPanel(
+              condition = "input.event_use_weekdays == true",
+              div(
+                class = "alert alert-warning py-2",
+                bs_icon("exclamation-triangle"),
+                " 편집 모드에서 이 옵션을 사용하면 기존 일정 1건을 삭제하고, 선택한 요일에 해당하는 날짜마다 일정이 새로 생성됩니다."
+              ),
+              checkboxGroupInput(
+                "event_weekdays",
+                div(bs_icon("calendar-week"), "요일"),
+                choices = c("월" = 1, "화" = 2, "수" = 3, "목" = 4, "금" = 5, "토" = 6, "일" = 7),
+                selected = c(1, 2, 3, 4, 5),
+                inline = TRUE
+              )
+            )
+          )
         ),
         selectInput("event_category", div(bs_icon("tag"), "업무 구분"), choices = CATEGORY_OPTIONS, selected = ev$category),
         conditionalPanel(
@@ -1682,6 +1734,20 @@ server <- function(input, output, session) {
     
     id <- isolate(editing_event_id())
     jwt <- current_jwt()
+
+    # 기간 내 특정 요일만 생성(반복) 옵션
+    use_weekdays <- isTRUE(input$event_use_weekdays)
+    weekdays_sel <- input$event_weekdays
+    if (is.null(weekdays_sel)) weekdays_sel <- integer(0)
+
+    get_dates_in_range_by_weekdays <- function(d_start, d_end, wds) {
+      wds <- suppressWarnings(as.integer(wds))
+      wds <- wds[!is.na(wds)]
+      if (length(wds) == 0) return(as.Date(character(0)))
+
+      days <- seq(d_start, d_end, by = "day")
+      days[lubridate::wday(days, week_start = 1) %in% wds]
+    }
     
     # 신규
     if (is.null(id)) {
@@ -1701,6 +1767,60 @@ server <- function(input, output, session) {
           author = current_user_name(),
           time = format(Sys.time(), tz = "Asia/Seoul", format = "%Y-%m-%d %H:%M:%S")
         ))
+      }
+
+      # ✅ 기간 내 특정 요일 반복 생성
+      if (isTRUE(use_weekdays)) {
+        if (length(weekdays_sel) == 0) {
+          showNotification("요일을 선택하세요.", type = "error")
+          return()
+        }
+
+        target_dates <- get_dates_in_range_by_weekdays(start_date, end_date, weekdays_sel)
+        if (length(target_dates) == 0) {
+          showNotification("선택한 요일에 해당하는 날짜가 없습니다.", type = "error")
+          return()
+        }
+
+        rows <- lapply(target_dates, function(d) {
+          list(
+            title = title,
+            start_date = format(d, "%Y-%m-%d"),
+            end_date = format(d, "%Y-%m-%d"),
+            is_allday = is_allday,
+            start_time = start_time,
+            end_time = end_time,
+            category = cat,
+            location = loc,
+            participants = participants_str,
+            creator_email = creator,
+            creator_name = current_user_name(),
+            google_calendar_id = if (google_synced) "local_dummy_calendar" else NA_character_,
+            google_event_id = if (google_synced) paste0("pending-", format(d, "%Y%m%d")) else NA_character_,
+            google_synced = google_synced,
+            memo_history = memo_history_list
+          )
+        })
+
+        inserted_df <- insert_events_supabase(rows, jwt = jwt)
+
+        if (is.null(inserted_df) || nrow(inserted_df) == 0) {
+          showNotification("반복 일정 추가에 실패했습니다.", type = "error")
+          return()
+        }
+
+        df0 <- events_rv()
+        for (k in seq_len(nrow(inserted_df))) {
+          df0 <- events_upsert_row(df0, inserted_df[k, , drop = FALSE])
+        }
+        events_rv(df0)
+
+        removeModal()
+        showNotification(
+          div(bs_icon("check-circle"), sprintf("일정이 %d건 추가되었습니다.", nrow(inserted_df))),
+          type = "message"
+        )
+        return()
       }
       
       inserted_df <- insert_event_supabase(list(
@@ -1762,6 +1882,76 @@ server <- function(input, output, session) {
         time = format(Sys.time(), tz = "Asia/Seoul", format = "%Y-%m-%d %H:%M:%S")
       )
       existing_memo_history <- c(existing_memo_history, list(new_memo_item))
+    }
+
+    # ✅ 편집 모드: 기간 내 특정 요일로 일정 재생성 (기존 1건 삭제 + 신규 N건 생성)
+    if (isTRUE(use_weekdays)) {
+      if (length(weekdays_sel) == 0) {
+        showNotification("요일을 선택하세요.", type = "error")
+        return()
+      }
+
+      target_dates <- get_dates_in_range_by_weekdays(start_date, end_date, weekdays_sel)
+      if (length(target_dates) == 0) {
+        showNotification("선택한 요일에 해당하는 날짜가 없습니다.", type = "error")
+        return()
+      }
+
+      creator_email0 <- ev0$creator_email[1]
+      creator_name0 <- ev0$creator_name[1]
+
+      rows <- lapply(target_dates, function(d) {
+        list(
+          title = title,
+          start_date = format(d, "%Y-%m-%d"),
+          end_date = format(d, "%Y-%m-%d"),
+          is_allday = is_allday,
+          start_time = start_time,
+          end_time = end_time,
+          category = cat,
+          location = loc,
+          participants = participants_str,
+          creator_email = creator_email0,
+          creator_name = creator_name0,
+          google_synced = sync_to_google,
+          google_calendar_id = if (sync_to_google) "local_dummy_calendar" else NA_character_,
+          google_event_id = if (sync_to_google) paste0("batch-", id, "-", format(d, "%Y%m%d")) else NA_character_,
+          memo_history = existing_memo_history
+        )
+      })
+
+      inserted_df <- insert_events_supabase(rows, jwt = jwt)
+
+      if (is.null(inserted_df) || nrow(inserted_df) == 0) {
+        showNotification("반복 일정 생성에 실패했습니다.", type = "error")
+        return()
+      }
+
+      deleted <- delete_event_supabase(id, jwt = jwt)
+      if (!isTRUE(deleted)) {
+        events_rv(fetch_events(jwt))
+        removeModal()
+        showNotification(
+          div(bs_icon("exclamation-triangle"), "새 일정은 생성되었으나 기존 일정 삭제가 실패하여 새로고침했습니다."),
+          type = "warning"
+        )
+        return()
+      }
+
+      df0 <- events_rv()
+      df0 <- events_delete_id(df0, id)
+      for (k in seq_len(nrow(inserted_df))) {
+        df0 <- events_upsert_row(df0, inserted_df[k, , drop = FALSE])
+      }
+      events_rv(df0)
+
+      editing_event_id(NULL)
+      removeModal()
+      showNotification(
+        div(bs_icon("check-circle"), sprintf("일정이 %d건으로 재생성되었습니다.", nrow(inserted_df))),
+        type = "message"
+      )
+      return()
     }
     
     updated_df <- update_event_supabase(id, list(
