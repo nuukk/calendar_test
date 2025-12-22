@@ -128,6 +128,7 @@ empty_events <- function() {
     is_allday = logical(0),
     start_time = character(0),
     end_time = character(0),
+    main_category = character(0),
     category = character(0),
     location = character(0),
     participants = character(0),
@@ -232,6 +233,8 @@ normalize_events_df <- function(df) {
   if (is.null(df) || nrow(df) == 0) return(empty_events())
   if (!"memo_history" %in% names(df)) df$memo_history <- vector("list", nrow(df))
   df$memo_history <- normalize_memo_history(df$memo_history, nrow(df))
+  if (!"main_category" %in% names(df)) df$main_category <- NA_character_
+  if ("main_category" %in% names(df)) df$main_category <- as.character(df$main_category)
   if ("start_date" %in% names(df)) df$start_date <- as.Date(df$start_date)
   if ("end_date" %in% names(df)) df$end_date <- as.Date(df$end_date)
   if ("is_allday" %in% names(df)) df$is_allday <- as.logical(df$is_allday)
@@ -317,32 +320,6 @@ insert_event_supabase <- function(row, jwt = NULL) {
     df
   }, error = function(e) {
     message("이벤트 저장 중 오류 발생: ", e$message)
-    empty_events()
-  })
-}
-
-# 여러 건 INSERT (요일 반복 등)
-insert_events_supabase <- function(rows, jwt = NULL) {
-  tryCatch({
-    if (is.null(rows) || length(rows) == 0) return(empty_events())
-    if (!is.list(rows)) return(empty_events())
-
-    # rows가 "단일 row(list)"로 들어오면 list(rows)로 보정
-    if (!all(vapply(rows, is.list, logical(1)))) rows <- list(rows)
-
-    resp <- supabase_request(SUPABASE_EVENTS_TABLE, jwt) %>%
-      req_method("POST") %>%
-      req_headers(Prefer = "return=representation") %>%
-      req_body_json(rows, auto_unbox = TRUE) %>%
-      req_perform()
-
-    data <- resp_body_json(resp, simplifyVector = TRUE)
-    if (length(data) == 0) return(empty_events())
-    df <- normalize_events_df(as.data.frame(data, stringsAsFactors = FALSE))
-    df$id <- suppressWarnings(as.integer(df$id))
-    df
-  }, error = function(e) {
-    message("이벤트(여러 건) 저장 중 오류 발생: ", e$message)
     empty_events()
   })
 }
@@ -1027,6 +1004,17 @@ main_ui <- page_navbar(
     card(
       card_header(class = "bg-success text-white", div(bs_icon("funnel"), " 필터")),
       card_body(
+        selectizeInput(
+          "main_category_filter",
+          label=div(bs_icon("folder2-open"), "카테고리(대분류)"),
+          choices=character(0),
+          selected=character(0),
+          multiple=TRUE,
+          options=list(
+            plugins=list("remove_button"),
+            placeholder="전체 (선택 없으면 전체)"
+          )
+        ),
         selectInput(
           "category_filter",
           label = div(bs_icon("tags"), "업무 구분"),
