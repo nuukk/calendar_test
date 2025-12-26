@@ -102,6 +102,13 @@ server <- function(input, output, session) {
   events_rv <- reactiveVal(empty_events())
   major_rv <- reactiveVal(empty_major())
   deliverable_rv <- reactiveVal(empty_deliverable())
+
+  # -------------------------------------------------
+  # ✅ 사람 필터(내 일정만 보기): 여러 명 선택 + 기본값=전체 선택
+  #   - 자기 자신도 선택/해제 가능
+  # -------------------------------------------------
+  people_filter_inited <- reactiveVal(FALSE)
+
   
   
   # -------------------------------------------------
@@ -120,6 +127,7 @@ server <- function(input, output, session) {
   
   # 로그인/로그아웃 시 초기 로드/초기화 + ✅ polling 초기 상태 세팅
   observeEvent(authed(), {
+    people_filter_inited(FALSE)
     if (isTRUE(authed())) {
       jwt <- current_jwt()
       events_rv(fetch_events(jwt))
@@ -286,6 +294,57 @@ server <- function(input, output, session) {
     selected <- intersect(selected, choices)
     updateSelectizeInput(session, "main_category_filter", choices=choices, selected=selected, server=TRUE)
   }, ignoreInit=TRUE)
+
+
+  # -------------------------------------------------
+  # ✅ 사람 필터(내 일정만 보기) choices/기본값 갱신
+  #   - 여러 명 선택 가능
+  #   - 기본값: 모든 사람 선택
+  #   - 자기 자신도 포함
+  # -------------------------------------------------
+  observeEvent(events_rv(), {
+    req(authed())
+
+    df <- events_rv()
+    me <- current_user_email()
+
+    emails <- character(0)
+    if (!is.null(df) && nrow(df) > 0) {
+      creator <- df$creator_email
+      part_raw <- df$participants
+      part_raw <- part_raw[!is.na(part_raw) & nzchar(part_raw)]
+      part_vec <- character(0)
+      if (length(part_raw) > 0) {
+        part_vec <- unlist(strsplit(part_raw, ","), use.names = FALSE)
+      }
+      emails <- c(creator, part_vec)
+    }
+
+    emails <- unique(c(ALLOWED_EMAILS, me, emails))
+    emails <- unique(trimws(tolower(as.character(emails))))
+    emails <- emails[!is.na(emails) & nzchar(emails)]
+    emails <- sort(emails)
+
+    choices <- if (length(emails) == 0) {
+      character(0)
+    } else {
+      stats::setNames(emails, vapply(emails, user_name, character(1)))
+    }
+
+    current_sel <- isolate(input$show_only_mine)
+    if (is.null(current_sel)) current_sel <- character(0)
+    current_sel <- unique(trimws(tolower(as.character(current_sel))))
+    current_sel <- current_sel[nzchar(current_sel)]
+
+    if (!isTRUE(people_filter_inited())) {
+      selected <- emails
+      people_filter_inited(TRUE)
+    } else {
+      selected <- intersect(current_sel, emails)
+    }
+
+    updateSelectizeInput(session, "show_only_mine", choices=choices, selected=selected, server=TRUE)
+  }, ignoreInit=TRUE)
   
   # -------------------------------------------------
   # 캘린더 필터
@@ -294,17 +353,25 @@ server <- function(input, output, session) {
     req(authed())
     df <- events_rv()
     if (is.null(df) || nrow(df) == 0) return(df)
-    
-    if (isTRUE(input$show_only_mine)) {
-      em <- current_user_email()
-      my_created <- df$creator_email == em
-      my_participated <- vapply(seq_len(nrow(df)), function(i) {
-        part <- df$participants[i]
-        if (is.na(part) || !nzchar(part)) return(FALSE)
-        em %in% trimws(strsplit(part, ",")[[1]])
-      }, logical(1))
-      df <- df[my_created | my_participated, , drop = FALSE]
-    }
+
+    sel_people <- input$show_only_mine
+    if (is.null(sel_people)) return(df)
+    sel_people <- unique(trimws(tolower(as.character(sel_people))))
+    sel_people <- sel_people[nzchar(sel_people)]
+
+    # 선택이 0명이면 일정도 0개
+    if (length(sel_people) == 0) return(df[0, , drop = FALSE])
+
+    created_by <- !is.na(df$creator_email) & tolower(df$creator_email) %in% sel_people
+    participated_by <- vapply(seq_len(nrow(df)), function(i) {
+      part <- df$participants[i]
+      if (is.na(part) || !nzchar(part)) return(FALSE)
+      ems <- trimws(tolower(strsplit(part, ",")[[1]]))
+      any(ems %in% sel_people)
+    }, logical(1))
+
+    df <- df[created_by | participated_by, , drop = FALSE]
+
     
     sel_main <- input$main_category_filter
     if (!is.null(sel_main) && length(sel_main) > 0) {

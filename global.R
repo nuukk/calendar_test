@@ -1021,7 +1021,24 @@ main_ui <- page_navbar(
           choices = c("전체", CATEGORY_OPTIONS),
           selected = "전체"
         ),
-        checkboxInput("show_only_mine", label = div(bs_icon("person-check"), "내 일정만 보기"), value = FALSE)
+        selectizeInput(
+          "show_only_mine",
+          label = div(bs_icon("person-check"), "내 일정만 보기"),
+          choices = {
+            ids <- ALLOWED_EMAILS
+            if (length(ids) == 0) {
+              character(0)
+            } else {
+              stats::setNames(ids, vapply(ids, user_name, character(1)))
+            }
+          },
+          selected = ALLOWED_EMAILS,
+          multiple = TRUE,
+          options = list(
+            plugins = list("remove_button"),
+            placeholder = "전체 (기본: 전체 선택)"
+          )
+        )
       )
     ),
     div(
