@@ -972,6 +972,46 @@ main_ui <- page_navbar(
             if (window.__rr_calendar_msg_handlers_installed) return;
             window.__rr_calendar_msg_handlers_installed = true;
 
+            // -------------------------------------------------
+            // ✅ (공통) Bootstrap 모달 잔존(backdrop, modal-open 등) 정리 함수
+            //   - Shiny removeModal()/UI 재렌더 과정에서 bootstrap 이벤트가 누락되는 경우 대비
+            //   - 모달이 실제로 열려있는(.modal.show) 경우는 건드리지 않음
+            // -------------------------------------------------
+            if (typeof window.__rrResetBootstrapModalsOnce !== 'function') {
+              window.__rrResetBootstrapModalsOnce = function() {
+                try {
+                  var opened = document.querySelectorAll('.modal.show');
+                  var hasOpenModal = opened && opened.length > 0;
+                  if (hasOpenModal) return;
+
+                  var backdrops = document.querySelectorAll('.modal-backdrop');
+                  backdrops.forEach(function(el) { el.remove(); });
+
+                  if (document.body) document.body.classList.remove('modal-open');
+                  if (document.documentElement) document.documentElement.classList.remove('modal-open');
+
+                  if (document.body) {
+                    document.body.style.paddingRight = '';
+                    document.body.style.overflow = '';
+                  }
+                  if (document.documentElement) {
+                    document.documentElement.style.paddingRight = '';
+                    document.documentElement.style.overflow = '';
+                  }
+
+                  // Bootstrap이 모달 열 때 fixed/sticky 요소에도 스크롤바 보정(padding/margin)을 주는 경우가 있음
+                  // (정상 종료가 안 되면 화면이 잘려 보이는 원인)
+                  var fixedEls = document.querySelectorAll('.fixed-top, .fixed-bottom, .is-fixed, .sticky-top');
+                  fixedEls.forEach(function(node) {
+                    try {
+                      node.style.paddingRight = '';
+                      node.style.marginRight = '';
+                    } catch (e2) {}
+                  });
+                } catch (e) {}
+              };
+            }
+
             Shiny.addCustomMessageHandler('clearCalendarSelection', function(message) {
               try {
                 var selections = document.querySelectorAll('.toastui-calendar-grid-selection');
@@ -1009,23 +1049,20 @@ main_ui <- page_navbar(
             Shiny.addCustomMessageHandler('resetBootstrapModals', function(message) {
               message = message || {};
               var delay = (typeof message.delay === 'number') ? message.delay : 0;
+              var tries = (typeof message.tries === 'number') ? message.tries : 8;
 
-              setTimeout(function() {
+              var n = 0;
+              var tick = function() {
+                n += 1;
                 try {
-                  var backdrops = document.querySelectorAll('.modal-backdrop');
-                  backdrops.forEach(function(el) { el.remove(); });
-
-                  document.body.classList.remove('modal-open');
-                  if (document.documentElement) document.documentElement.classList.remove('modal-open');
-
-                  document.body.style.paddingRight = '';
-                  document.body.style.overflow = '';
-                  if (document.documentElement) {
-                    document.documentElement.style.paddingRight = '';
-                    document.documentElement.style.overflow = '';
+                  if (typeof window.__rrResetBootstrapModalsOnce === 'function') {
+                    window.__rrResetBootstrapModalsOnce();
                   }
                 } catch (e) {}
-              }, delay);
+                if (n < tries) setTimeout(tick, 120);
+              };
+
+              setTimeout(tick, delay);
             });
           }
 
@@ -1053,21 +1090,35 @@ main_ui <- page_navbar(
           window.__rrCalendarTryResize = function(id) {
             id = id || 'calendar';
 
-            // 1) htmlwidgets 전체 리사이즈
+            // 먼저 DOM에서 캘린더 엘리먼트를 찾고, 보이는 상태인지 확인
+            // (숨김/0-size 상태에서 updateSize()를 호출하면 잘림이 고착되는 케이스가 있어 방어)
+            var el = null;
+            try { el = document.getElementById(id); } catch (e) { el = null; }
+            if (!el) return;
+
+            var rect = null;
+            try { rect = el.getBoundingClientRect(); } catch (e) { rect = null; }
+            var w = rect ? rect.width : (el.offsetWidth || 0);
+            var h = rect ? rect.height : (el.offsetHeight || 0);
+            var visible = (w > 30 && h > 30);
+
+            if (!visible) {
+              // 아직 크기 계산이 불가능한 상태면(숨김/0-size) 리사이즈는 다음 기회로 미룸
+              return;
+            }
+
+            // 1) window resize 이벤트 (레이아웃 변경 후 유용)
+            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+
+            // 2) htmlwidgets 전체 리사이즈
             try {
               if (window.HTMLWidgets && typeof window.HTMLWidgets.resizeAll === 'function') {
                 window.HTMLWidgets.resizeAll();
               }
             } catch (e) {}
 
-            // 2) window resize 이벤트 (레이아웃 변경 후 유용)
-            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
-
             // 3) toastui 인스턴스 직접 updateSize/render 시도 (가능한 경우)
             try {
-              var el = document.getElementById(id);
-              if (!el) return;
-
               var inst = null;
 
               try {
@@ -1104,6 +1155,13 @@ main_ui <- page_navbar(
             window.__rrCalendarQueueResize(220);
           }, true);
           document.addEventListener('hidden.bs.modal', function() {
+            // 모달 닫힘 이후 body가 modal-open 상태로 남는 케이스 방지
+            try {
+              if (typeof window.__rrResetBootstrapModalsOnce === 'function') {
+                setTimeout(function() { window.__rrResetBootstrapModalsOnce(); }, 60);
+                setTimeout(function() { window.__rrResetBootstrapModalsOnce(); }, 260);
+              }
+            } catch (e) {}
             window.__rrCalendarQueueResize(220);
           }, true);
 
@@ -1122,12 +1180,29 @@ main_ui <- page_navbar(
               ro.observe(el);
               el.__rr_resize_observer = ro;
             } catch (e) {}
+
+            // observe 직후에도 1회 리사이즈(초기 콜백 누락/브라우저별 편차 대응)
+            window.__rrCalendarQueueResize(120);
           };
 
           // uiOutput로 calendar DOM이 재생성될 수 있어 MutationObserver로 재부착
           try {
             var mo = new MutationObserver(function() {
               attachResizeObserver();
+
+              // Shiny가 모달 DOM을 강제로 제거하는 경우(bootstrap 이벤트 미발생)에도
+              // modal-open/backdrop이 남지 않도록 주기적으로 정리
+              try {
+                var opened = document.querySelectorAll('.modal.show');
+                var hasOpenModal = opened && opened.length > 0;
+                if (!hasOpenModal) {
+                  var hasBackdrop = document.querySelectorAll('.modal-backdrop').length > 0;
+                  var bodyHasOpen = document.body && document.body.classList && document.body.classList.contains('modal-open');
+                  if ((hasBackdrop || bodyHasOpen) && typeof window.__rrResetBootstrapModalsOnce === 'function') {
+                    window.__rrResetBootstrapModalsOnce();
+                  }
+                }
+              } catch (e2) {}
             });
             mo.observe(document.documentElement || document.body, { childList: true, subtree: true });
           } catch (e) {}

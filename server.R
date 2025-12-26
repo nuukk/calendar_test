@@ -259,8 +259,14 @@ server <- function(input, output, session) {
     }, once = TRUE)
   }
 
-  reset_bootstrap_modals <- function(delay_ms = 0L) {
-    session$sendCustomMessage("resetBootstrapModals", list(delay = as.integer(delay_ms)))
+  reset_bootstrap_modals <- function(delay_ms = 0L, tries = 8L) {
+    session$sendCustomMessage(
+      "resetBootstrapModals",
+      list(
+        delay = as.integer(delay_ms),
+        tries = as.integer(tries)
+      )
+    )
   }
 
   get_participant_choices_new <- function() {
@@ -1998,7 +2004,8 @@ server <- function(input, output, session) {
   observeEvent(input$confirm_delete, {
     req(authed())
     removeModal()
-    reset_bootstrap_modals(delay_ms = 50L)
+    reset_bootstrap_modals(delay_ms = 0L, tries = 10L)
+    clear_calendar_selection()
 
     id <- isolate(editing_event_id())
     req(id)
@@ -2011,7 +2018,7 @@ server <- function(input, output, session) {
     editing_event_id(NULL)
 
     # ✅ 삭제 후 레이아웃 재계산(월간 높이 변경/모달 폭 변경 대응)
-    force_calendar_resize(delay_ms = 320L, tries = 12L)
+    force_calendar_resize(delay_ms = 320L, tries = 24L)
 
     showNotification(div(bs_icon("trash"), "일정이 삭제되었습니다."), type = "message")
   }, ignoreInit = TRUE)
