@@ -13,9 +13,9 @@ library(jsonlite)
 
 `%||%` <- function(x, y) if (is.null(x) || length(x) == 0) y else x
 
-# -------------------------------------------------
+# --------------------------------------------------
 # 1) 사용자
-# -------------------------------------------------
+# --------------------------------------------------
 parse_env_json <- function(x) {
   x <- x %||% ""
   if (!nzchar(x)) return(list())
@@ -963,12 +963,179 @@ main_ui <- page_navbar(
         }
       ")),
       tags$script(HTML("
-        Shiny.addCustomMessageHandler('clearCalendarSelection', function(message) {
-          var selections = document.querySelectorAll('.toastui-calendar-grid-selection');
-          selections.forEach(function(el) { el.remove(); });
-          var guides = document.querySelectorAll('.toastui-calendar-grid-selection-guide');
-          guides.forEach(function(el) { el.remove(); });
-        });
+        // -------------------------------------------------
+        // 캘린더 선택영역(드래그) 잔상 제거
+        // -------------------------------------------------
+        (function() {
+          function registerHandlers() {
+            if (!(window.Shiny && typeof window.Shiny.addCustomMessageHandler === 'function')) return;
+            if (window.__rr_calendar_msg_handlers_installed) return;
+            window.__rr_calendar_msg_handlers_installed = true;
+
+            Shiny.addCustomMessageHandler('clearCalendarSelection', function(message) {
+              try {
+                var selections = document.querySelectorAll('.toastui-calendar-grid-selection');
+                selections.forEach(function(el) { el.remove(); });
+                var guides = document.querySelectorAll('.toastui-calendar-grid-selection-guide');
+                guides.forEach(function(el) { el.remove(); });
+              } catch (e) {}
+            });
+
+            // -------------------------------------------------
+            // ✅ 캘린더 레이아웃 강제 리사이즈 (width/height 재계산)
+            // -------------------------------------------------
+            Shiny.addCustomMessageHandler('forceCalendarResize', function(message) {
+              message = message || {};
+              var id = message.id || 'calendar';
+              var delay = (typeof message.delay === 'number') ? message.delay : 200;
+              var tries = (typeof message.tries === 'number') ? message.tries : 12;
+
+              var n = 0;
+
+              var tick = function() {
+                n += 1;
+                if (typeof window.__rrCalendarTryResize === 'function') {
+                  window.__rrCalendarTryResize(id);
+                }
+                if (n < tries) setTimeout(tick, 80);
+              };
+
+              setTimeout(tick, delay);
+            });
+
+            // -------------------------------------------------
+            // ✅ 모달 잔존(backdrop, modal-open 등) 정리
+            // -------------------------------------------------
+            Shiny.addCustomMessageHandler('resetBootstrapModals', function(message) {
+              message = message || {};
+              var delay = (typeof message.delay === 'number') ? message.delay : 0;
+
+              setTimeout(function() {
+                try {
+                  var backdrops = document.querySelectorAll('.modal-backdrop');
+                  backdrops.forEach(function(el) { el.remove(); });
+
+                  document.body.classList.remove('modal-open');
+                  if (document.documentElement) document.documentElement.classList.remove('modal-open');
+
+                  document.body.style.paddingRight = '';
+                  document.body.style.overflow = '';
+                  if (document.documentElement) {
+                    document.documentElement.style.paddingRight = '';
+                    document.documentElement.style.overflow = '';
+                  }
+                } catch (e) {}
+              }, delay);
+            });
+          }
+
+          // Shiny가 이미 로드된 경우 즉시 등록, 아니면 connected 이후 등록
+          if (window.Shiny && typeof window.Shiny.addCustomMessageHandler === 'function') {
+            registerHandlers();
+          } else {
+            document.addEventListener('shiny:connected', function() {
+              registerHandlers();
+            });
+          }
+        })();
+
+        // -------------------------------------------------
+        // ✅ (핵심) 자동 리사이즈 훅
+        // - 탭 전환 / 모달 닫힘 / calendarOutput 높이 변경 시 자동 대응
+        // - 삭제 후 "잘림" 현상 대부분은 (1) hidden 상태 렌더링 + (2) 모달로 인한 폭/스크롤 변경에서 발생
+        // -------------------------------------------------
+        (function() {
+          if (window.__rr_calendar_autoresize_installed) return;
+          window.__rr_calendar_autoresize_installed = true;
+
+          var resizeTimer = null;
+
+          window.__rrCalendarTryResize = function(id) {
+            id = id || 'calendar';
+
+            // 1) htmlwidgets 전체 리사이즈
+            try {
+              if (window.HTMLWidgets && typeof window.HTMLWidgets.resizeAll === 'function') {
+                window.HTMLWidgets.resizeAll();
+              }
+            } catch (e) {}
+
+            // 2) window resize 이벤트 (레이아웃 변경 후 유용)
+            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+
+            // 3) toastui 인스턴스 직접 updateSize/render 시도 (가능한 경우)
+            try {
+              var el = document.getElementById(id);
+              if (!el) return;
+
+              var inst = null;
+
+              try {
+                if (window.HTMLWidgets && typeof window.HTMLWidgets.getInstance === 'function') {
+                  inst = window.HTMLWidgets.getInstance(el);
+                }
+              } catch (e) {}
+
+              inst = inst || el.calendar || el._calendar || el._tuiCalendar || el.tuiCalendar ||
+                     el.__tuiCalendar || el.__calendar || el.__widget || null;
+
+              var cal = (inst && (inst.calendar || inst._calendar)) ? (inst.calendar || inst._calendar) : inst;
+
+              try { if (cal && typeof cal.render === 'function') cal.render(); } catch (e) {}
+              try { if (cal && typeof cal.updateSize === 'function') cal.updateSize(); } catch (e) {}
+            } catch (e) {}
+          };
+
+          window.__rrCalendarQueueResize = function(delay) {
+            delay = (typeof delay === 'number') ? delay : 180;
+            if (resizeTimer) clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function() {
+              window.__rrCalendarTryResize('calendar');
+            }, delay);
+          };
+
+          // Bootstrap tab shown (bslib page_navbar/nav_panel)
+          document.addEventListener('shown.bs.tab', function() {
+            window.__rrCalendarQueueResize(220);
+          }, true);
+
+          // Bootstrap modal open/close
+          document.addEventListener('shown.bs.modal', function() {
+            window.__rrCalendarQueueResize(220);
+          }, true);
+          document.addEventListener('hidden.bs.modal', function() {
+            window.__rrCalendarQueueResize(220);
+          }, true);
+
+          // 캘린더 컨테이너 크기 변화 (month height auto 포함)
+          var attachResizeObserver = function() {
+            var el = document.getElementById('calendar');
+            if (!el || el.__rr_resize_observer_attached) return;
+            el.__rr_resize_observer_attached = true;
+
+            if (!window.ResizeObserver) return;
+
+            try {
+              var ro = new ResizeObserver(function() {
+                window.__rrCalendarQueueResize(80);
+              });
+              ro.observe(el);
+              el.__rr_resize_observer = ro;
+            } catch (e) {}
+          };
+
+          // uiOutput로 calendar DOM이 재생성될 수 있어 MutationObserver로 재부착
+          try {
+            var mo = new MutationObserver(function() {
+              attachResizeObserver();
+            });
+            mo.observe(document.documentElement || document.body, { childList: true, subtree: true });
+          } catch (e) {}
+
+          // 초기 1회
+          attachResizeObserver();
+          window.__rrCalendarQueueResize(280);
+        })();
       "))
     ),
     useShinyjs()

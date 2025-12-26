@@ -1,9 +1,9 @@
 # server.R
 server <- function(input, output, session) {
   
-  # -------------------------------------------------
+  # --------------------------------------------------
   # 로그인 (Supabase Auth session -> Shiny input)
-  # -------------------------------------------------
+  # --------------------------------------------------
   login_msg <- reactiveVal(NULL)
   user_email_rv <- reactiveVal(NULL)
   access_token_rv <- reactiveVal(NULL)
@@ -245,6 +245,24 @@ server <- function(input, output, session) {
     session$sendCustomMessage("clearCalendarSelection", list())
   }
   
+
+  force_calendar_resize <- function(delay_ms = 200L, tries = 12L) {
+    session$onFlushed(function() {
+      session$sendCustomMessage(
+        "forceCalendarResize",
+        list(
+          id = "calendar",
+          delay = as.integer(delay_ms),
+          tries = as.integer(tries)
+        )
+      )
+    }, once = TRUE)
+  }
+
+  reset_bootstrap_modals <- function(delay_ms = 0L) {
+    session$sendCustomMessage("resetBootstrapModals", list(delay = as.integer(delay_ms)))
+  }
+
   get_participant_choices_new <- function() {
     me <- current_user_email()
     all_users <- names(USER_NAMES) %||% character(0)
@@ -411,6 +429,16 @@ server <- function(input, output, session) {
     if (!is.finite(k) || is.na(k) || k < 1L) 1L else as.integer(k)
   })
   
+  
+  # -------------------------------------------------
+  # ✅ 일정 변경/뷰 변경/월간 높이 변경 후 캘린더 리사이즈
+  #   - 삭제 후 레이아웃이 잘려 보이는 현상 대응
+  # -------------------------------------------------
+  observeEvent(list(month_max_events(), input$view_mode), {
+    req(authed())
+    force_calendar_resize(delay_ms = 260L, tries = 12L)
+  }, ignoreInit = TRUE)
+
   output$calendar_ui <- renderUI({
     req(authed())
     view_mode <- input$view_mode %||% "month"
@@ -563,6 +591,7 @@ server <- function(input, output, session) {
   observeEvent(input$major_confirm_delete, {
     req(authed())
     removeModal()
+    reset_bootstrap_modals(delay_ms = 50L)
     
     id <- major_selected_id()
     req(id)
@@ -776,6 +805,7 @@ server <- function(input, output, session) {
   observeEvent(input$deliverable_confirm_delete, {
     req(authed())
     removeModal()
+    reset_bootstrap_modals(delay_ms = 50L)
     
     id <- deliverable_selected_id()
     req(id)
@@ -1879,6 +1909,9 @@ server <- function(input, output, session) {
       }
       
       removeModal()
+      reset_bootstrap_modals(delay_ms = 50L)
+      force_calendar_resize(delay_ms = 320L, tries = 12L)
+      
       showNotification(div(bs_icon("check-circle"), "일정이 추가되었습니다."), type = "message")
       return()
     }
@@ -1938,6 +1971,9 @@ server <- function(input, output, session) {
     }
     
     removeModal()
+    reset_bootstrap_modals(delay_ms = 50L)
+    force_calendar_resize(delay_ms = 320L, tries = 12L)
+    
     showNotification(div(bs_icon("check-circle"), "일정이 수정되었습니다."), type = "message")
   }, ignoreInit = TRUE)
   
@@ -1962,15 +1998,21 @@ server <- function(input, output, session) {
   observeEvent(input$confirm_delete, {
     req(authed())
     removeModal()
+    reset_bootstrap_modals(delay_ms = 50L)
+
     id <- isolate(editing_event_id())
     req(id)
-    
+
     deleted <- delete_event_supabase(id, jwt = current_jwt())
     if (isTRUE(deleted)) {
       events_rv(events_delete_id(events_rv(), id))
     }
-    
+
     editing_event_id(NULL)
+
+    # ✅ 삭제 후 레이아웃 재계산(월간 높이 변경/모달 폭 변경 대응)
+    force_calendar_resize(delay_ms = 320L, tries = 12L)
+
     showNotification(div(bs_icon("trash"), "일정이 삭제되었습니다."), type = "message")
   }, ignoreInit = TRUE)
 }
